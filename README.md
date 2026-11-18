@@ -9,9 +9,18 @@ It is a static site with no build step. Serve this folder over HTTPS (WebXR need
 
 Without a headset the same page opens a keyboard, mouse or touch preview.
 
+## What is in it
+- Read one line, look up, say it, pinch to go on. Looking up brings the people up; the one you face is the brightest.
+- Rooms: the hall (21 people), a panel of three, or your own room through passthrough (`immersive-ar`, seven people).
+- Lines you said to the room come back thinner; hold the other hand to see a line; two seconds to land the last word.
+- A notes sheet with a seating plan of the people you gave a whole sentence to; a record per script; one question from the room.
+- Cue cards for the day on the entry page.
+
 ## Check it
     node --test test/logic.test.mjs   # the rules (41 tests, no browser)
-    ./shot.sh walk "index.html?auto=walk"   # the real app in headless Chrome: 35 checks from entry to Leave
+    node --experimental-vm-modules check.mjs   # every module parses (node --check does not catch errors in these files)
+    ./shot.sh walk "index.html?auto=walk"   # the real app in headless Chrome: 41 checks from entry to Leave
+    ./shot.sh keys "index.html?auto=keys"   # real key, mouse and touch events: 14 checks
 
 ## Tune it on the device (no code change)
 Add to the address, for example `?down=-15&hold=0.3`:
