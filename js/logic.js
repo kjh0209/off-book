@@ -176,7 +176,7 @@ export class Run {
     const i = this.index, c = this.cur, kept = this._prior && this._prior.i === i ? this._prior : null;
     // went back by accident and came straight on again: the earlier result stands
     if (kept && c.dur < this.minUp(i) && !c.peeked) { this.per[i] = kept.rec; this.redo.delete(i); }
-    else this.per[i] = { up: c.up, dur: c.dur, looks: this.looksOf(c), peeked: c.peeked || !!(kept && kept.rec.peeked), verdict: this.demo ? 'clean' : this.verdictOf(c, i, kept && kept.rec), fast: this.looksOf(c) <= 1 };
+    else this.per[i] = { up: c.up, dur: c.dur, looks: this.looksOf(c), peeked: c.peeked || !!(kept && kept.rec.peeked), verdict: this.demo ? (c.up >= 0.6 ? 'clean' : 'kept') : this.verdictOf(c, i, kept && kept.rec), fast: this.looksOf(c) <= 1 };   // even the try-out wants one look up
     this._prior = null;
     this._undo = { pos: this.pos, started: this.started, cur: c, elapsed: this.elapsed, upTime: this.upTime, zoneTime: this.zoneTime.slice() };
     if (!this.started) {   // never looked down on line 1 (you knew it): count the time you spent saying it, up to a speaking pace

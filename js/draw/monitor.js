@@ -149,6 +149,7 @@ export function drawMonitor(ctx, w, h, s) {
       if (b.sub) { setFont(ctx, 400, small); ctx.fillStyle = on ? color.n4 : color.n7; ctx.fillText(b.sub, bx + padX, cy + (rows === 1 ? 70 : 62), inner); }
       if (on) { const o = rows === 1 ? 20 : 14; brackets(ctx, bx - o, by - o, bw + 2 * o, bh + 2 * o, rows === 1 ? 64 : 48, 8); }
     });
+    if (s.menuHint && rows === 1) { setFont(ctx, 400, small * 0.86); ctx.fillStyle = color.n6; ctx.fillText(s.menuHint, mx, 566, W - 2 * mx); }
     ctx.restore();
     return;
   }

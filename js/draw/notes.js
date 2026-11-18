@@ -45,7 +45,7 @@ function gazeSentence(z) {
   return 'The middle saw you least';
 }
 function closingSentence(count) {
-  if (count <= 0) return 'Every line was said without looking down';
+  if (count <= 0) return 'Every line was said to the room';
   return `${['One line', 'Two lines', 'Three lines'][Math.min(count, 3) - 1]} to run again`;
 }
 
@@ -185,6 +185,7 @@ export function drawNotes(ctx, w, h, d) {
   if (say(d.opening)) rows3.push(['Opening line:', say(d.opening), 500]);
   if (say(d.closing) && d.total > 1) rows3.push(['Closing line:', say(d.closing), 500]);
   rows3.push(['Said to the room:', `${d.said} of ${d.total}`, 600]);
+  if (d.last) rows3.push(['Last time:', d.last, 500]);      // the same script, the run before this one
   const gaze = d.gaze !== undefined ? d.gaze : gazeSentence(zones);
   const hA = 190, hB = (gaze ? 3 : 2) * LH + (gaze ? 0 : 24), hC = rows3.length * LH;
   const hD = weak.length ? LH + 8 + weak.length * LH + (weak.length - 1) * ITEM_GAP : LH;

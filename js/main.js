@@ -9,21 +9,23 @@ const SIZE = { regular: 0.9, large: 1, largest: 1.12 };
 
 // settings: { free: 'right'|'left', oneHand, textSize, room: 'full'|'panel', mode: 'skeleton'|'full', fade, sound }
 // own: { title, text, target } or null. store: { get(), set(obj) } holding { levels, clean, seen }.
-export async function enterRoom({ canvas, settings, own, linkFailed = false, store, xr = false, onLeave, auto = false }) {
+// sim: the view and hands are driven by a script (used to capture video); copy and behaviour are the headset's
+export async function enterRoom({ canvas, settings, own, linkFailed = false, store, xr = false, onLeave, auto = false, sim = false, fov = 56 }) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: !!auto });   // kept only so test screenshots show the frame
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2)); renderer.setClearColor(0x0a0908);
-  const camera = new THREE.PerspectiveCamera(56, 1, 0.05, 40); camera.rotation.order = 'YXZ';
+  const camera = new THREE.PerspectiveCamera(fov, 1, 0.05, 40); camera.rotation.order = 'YXZ';
   const world = await buildWorld({ panel: settings.room === 'panel', textScale: SIZE[settings.textSize] || 1 });
   world.scene.add(camera);
-  const resize = () => { const w = canvas.clientWidth || window.innerWidth, h = canvas.clientHeight || window.innerHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); };
+  const fixed = auto && auto.size;       // a capture asks for an exact frame size
+  const resize = () => { if (fixed) { renderer.setPixelRatio(1); renderer.setSize(fixed[0], fixed[1], false); camera.aspect = fixed[0] / fixed[1]; camera.updateProjectionMatrix(); return; } const w = canvas.clientWidth || window.innerWidth, h = canvas.clientHeight || window.innerHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); };
   resize(); window.addEventListener('resize', resize);
 
   let ac = null; if (!auto && settings.sound) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch { ac = null; } }
-  const play = (name, delay = 0) => { if (!settings.sound || !ac) return; const go = () => { try { sfx[name](ac); } catch { /* sound is never worth a crash */ } }; delay ? setTimeout(go, delay) : go(); };
+  const play = (name, delay = 0) => { if (auto && auto.onSound) auto.onSound(name, now + delay / 1000); if (!settings.sound || !ac) return; const go = () => { try { sfx[name](ac); } catch { /* sound is never worth a crash */ } }; delay ? setTimeout(go, delay) : go(); };
 
-  const data = store.get(); data.levels ||= {}; data.clean ||= {}; data.seen ||= {};
+  const data = store.get(); data.levels ||= {}; data.clean ||= {}; data.seen ||= {}; data.history ||= {};
   const save = () => store.set(data);
-  const desktop = !xr, touch = desktop && matchMedia('(pointer: coarse)').matches;
+  const driven = !xr, desktop = !xr && !sim, touch = desktop && matchMedia('(pointer: coarse)').matches;   // driven: the camera follows look angles, not a headset
   const free = settings.free === 'left' ? 'left' : 'right', other = free === 'right' ? 'left' : 'right';
   const cap = (s) => s[0].toUpperCase() + s.slice(1);
 
@@ -41,7 +43,8 @@ export async function enterRoom({ canvas, settings, own, linkFailed = false, sto
 
   // ---------- menus ----------
   function scriptMenu(focusKey) {
-    const buttons = scripts.map((s) => ({ label: s.key === 'try4' ? 'Try four lines' : s.title, sub: (s.key === 'own' ? 'yours, ' : '') + minutes(s.key === 'try4' ? 20 : s.key === 'own' ? s.target : spokenSeconds(s.lines)), go: () => (s.key === 'try4' ? startTryout() : startRun(s)) }));
+    const record = (s) => { const h = data.history[s.key]; if (!h || !h.length) return null; const l = h[h.length - 1], nights = new Set(h.map((x) => x.d)).size; return l.said === l.total ? `off book, night ${nights}` : `night ${nights}, ${l.said} of ${l.total}`; };
+    const buttons = scripts.map((s) => ({ label: s.key === 'try4' ? 'Try four lines' : s.title, sub: (s.key !== 'try4' && record(s)) || (s.key === 'own' ? 'yours, ' : '') + minutes(s.key === 'try4' ? 20 : s.key === 'own' ? s.target : spokenSeconds(s.lines)), go: () => (s.key === 'try4' ? startTryout() : startRun(s)) }));
     if (!world.panel && buttons.length < 6) buttons.push({ label: 'Take a question', sub: '45 seconds', go: () => startQuestion() });
     const f = Math.max(0, scripts.findIndex((s) => s.key === (focusKey || (scripts.some((x) => x.key === 'own') ? 'own' : 'pitch'))));
     S.kind = 'menu'; S.menu = { buttons, cols: buttons.length <= 4 ? 2 : 3, focus: f, rail: true }; S.run = null; S.was = null; world.notes(null); world.question(null); world.askerHand(false);
@@ -66,16 +69,24 @@ export async function enterRoom({ canvas, settings, own, linkFailed = false, sto
     const run = S.run, script = S.script, demo = !!(S.runOpts && S.runOpts.demo);
     if (demo && S.pass === 0) { startTryout(1); return; }          // the same four lines again, one step thinner
     if (!demo) { data.levels = run.newLevels(data.levels); for (const i of run.order) data.clean[script.lines[i].id] = run.isClean(i) ? 1 : 0; }
-    data.seen.try4 = 1; save();
     const r = run.result(); S.result = r;
+    let last = null;
+    if (!demo && run.whole) {            // the record that makes tomorrow's visit different from tonight's
+      const h = (data.history[script.key] ||= []), prev = h[h.length - 1];
+      if (prev) last = `${prev.said} of ${prev.total}, head up ${prev.up}%`;
+      h.push({ d: new Date().toISOString().slice(0, 10), said: r.said, total: r.total, up: r.eyesUp, sec: r.timeSec }); if (h.length > 12) h.shift();
+    }
+    data.seen.try4 = 1; save();
     const gaze = r.least === 0 ? 'Left side saw you least' : r.least === 2 ? 'Right side saw you least' : '';
-    const notes = { title: script.title, timeSec: r.timeSec, targetSec: r.targetSec, eyesUp: r.eyesUp, zones: r.zones, gaze, opening: r.opening, closing: r.closing, said: r.said, total: r.total,
+    const notes = { title: script.title, timeSec: r.timeSec, targetSec: r.targetSec, eyesUp: r.eyesUp, zones: r.zones, gaze, opening: r.opening, closing: r.closing, said: r.said, total: r.total, last,
       weak: r.weak.map((i) => ({ n: i + 1, text: script.lines[i].text, help: run.per[i].peeked ? hiddenAt(script.lines[i].words, run.levels[i]) : [] })) };
     const weakBtn = { label: 'Run the weak lines', sub: `${r.weak.length} line${r.weak.length === 1 ? '' : 's'}, ${about(r.weakSeconds)}`, go: () => startRun(script, { order: r.weak, timed: false }) };
     const again = { label: demo ? 'Try the four lines again' : 'Run it again', go: () => (demo ? startTryout(0) : startRun(script)) };
     const done = { label: demo ? 'Choose a script' : 'Done for tonight', go: () => scriptMenu(demo ? null : script.key) };
     S.kind = 'curtain'; S.boardAt = now + 1.2; S.pendingNotes = notes; S.was = null;
-    S.menu = { buttons: demo ? [done, again] : r.weak.length ? [weakBtn, done] : [again, done], cols: 2, focus: 0 };
+    const ask = { label: 'Take a question', sub: 'someone has a hand up', go: () => startQuestion() };
+    const btns = demo ? [done, again] : r.weak.length ? [weakBtn, done] : [again, done]; if (!demo && run.whole && !world.panel) btns.splice(1, 0, ask);
+    S.menu = { buttons: btns, cols: btns.length, focus: 0 };
     play('applause');
   }
 
@@ -109,7 +120,7 @@ export async function enterRoom({ canvas, settings, own, linkFailed = false, sto
     if (name === 'next') {
       const i = run.index, lvl = run.level;
       if (!run.next(now)) return;
-      play('click'); if (run.isClean(i)) play('chime', 90);
+      play('click'); if (run.isClean(i)) { play('chime', 90); world.nod(run.zone); }
       S.was = lvl >= 1 && !run.demo ? { n: i + 1, text: S.script.lines[i].text, down: false } : null;
       if (run.done) finishRun();
     } else if (name === 'back' || name === 'left') { if (run.back()) S.was = null; }
@@ -127,15 +138,16 @@ export async function enterRoom({ canvas, settings, own, linkFailed = false, sto
   // ---------- head ----------
   const fwd = new THREE.Vector3(), pos = new THREE.Vector3(), q = new THREE.Quaternion();
   function readHead() {
-    if (desktop) { camera.position.set(0, 1.2, 0); camera.rotation.set(look.pitch * deg, -look.yaw * deg, 0); camera.updateMatrixWorld(); }
+    if (driven) { camera.position.set(look.x || 0, 1.2 + (look.y || 0), look.z || 0); camera.rotation.set(look.pitch * deg, -look.yaw * deg, (look.roll || 0) * deg); camera.updateMatrixWorld(); }
     camera.getWorldQuaternion(q); camera.getWorldPosition(pos); fwd.set(0, 0, -1).applyQuaternion(q);
     const ry = world.room.rotation.y, lx = fwd.x * Math.cos(-ry) + fwd.z * Math.sin(-ry), lz = -fwd.x * Math.sin(-ry) + fwd.z * Math.cos(-ry);
     head.rawPitch = Math.asin(Math.max(-1, Math.min(1, fwd.y))) / deg; head.pitch = head.rawPitch - head.pitch0; head.yaw = Math.atan2(lx, -lz) / deg;
   }
   function centreNow() {
-    if (desktop) { head.pitch0 = 0; centred = true; return; }
+    if (driven) { head.pitch0 = 0; centred = true; return; }
     camera.getWorldQuaternion(q); camera.getWorldPosition(pos); fwd.set(0, 0, -1).applyQuaternion(q);
-    world.centre(pos, Math.atan2(-fwd.x, -fwd.z)); head.pitch0 = Math.max(-12, Math.min(12, Math.asin(Math.max(-1, Math.min(1, fwd.y))) / deg)); centred = true;
+    const p0 = Math.asin(Math.max(-1, Math.min(1, fwd.y))) / deg;
+    world.centre(pos, Math.atan2(-fwd.x, -fwd.z)); head.pitch0 = p0 < -6 || p0 > 12 ? 0 : p0; centred = true;   // pinched while looking at the monitor: assume the head is level when up
   }
 
   // ---------- what the monitor says ----------
@@ -145,17 +157,19 @@ export async function enterRoom({ canvas, settings, own, linkFailed = false, sto
       : [`Say the line out loud, then pinch your ${free} hand`, 'Look up and say it. The words fade while you do', `${cap(other)} hand: pinch to go back, hold to see the line`, 'Pinch both hands and hold to pause'];
   function topRow() {
     const run = S.run;
-    if (xr && !settings.oneHand && S.lostSince[free] != null && now - S.lostSince[free] > 2) return { hint: `${cap(free)} hand not seen. Hold it up in front of you` };
+    if ((xr || sim) && !settings.oneHand && S.lostSince[free] != null && now - S.lostSince[free] > 2) return { hint: `${cap(free)} hand not seen. Hold it up in front of you` };
     if (S.was) return { hint: `Line ${S.was.n} was: ${S.was.text}`, hintInk: 'faint' };
     if (run && !run.whole && run.index > 0) return { hint: `After line ${run.index}: ${S.script.lines[run.index - 1].text}`, hintInk: 'faint' };
     if (run && run.demo && S.pass === 0 && HINTS[run.pos]) return { hint: HINTS[run.pos] };
     if (run && run.demo && S.pass === 1 && run.pos === 0) return { hint: 'Once more. Some of the words have gone' };
+    if (run && run.whole && !run.demo && run.pos === run.order.length - 1 && run.order.length > 3) return { hint: 'Last line. Give it to the back row', hintInk: 'faint' };
     return {};
   }
   function monitorState() {
-    if (S.kind === 'centre') return { mode: 'message', title: desktop ? (touch ? 'Tap to begin' : 'Press Space to begin') : 'Look straight ahead and pinch to begin',
-      sub: linkFailed ? 'Your script didn’t arrive. Open the link again, or paste it on the web page in this browser' : desktop ? 'This is a preview. Off Book is made for a headset and your hands' : 'Sit as you will sit to rehearse' };
-    if (S.menu && S.kind !== 'run') return { mode: 'menu', buttons: S.menu.buttons.map((b) => ({ label: b.label, sub: b.sub })), cols: S.menu.cols, focus: S.kind === 'curtain' && now < S.boardAt ? -1 : S.menu.focus };
+    if (S.kind === 'centre') return { mode: 'message', title: desktop ? (touch ? 'Tap to begin' : 'Press Space to begin') : 'Look up at the room, then pinch to begin',
+      sub: linkFailed ? 'Your script didn’t arrive. Open the link again, or paste it on the web page in this browser' : desktop ? 'This is a preview. Off Book is made for a headset and your hands' : world.panel ? 'Three people are waiting for you' : 'Twenty-one people are waiting for you' };
+    if (S.menu && S.kind !== 'run') return { mode: 'menu', buttons: S.menu.buttons.map((b) => ({ label: b.label, sub: b.sub })), cols: S.menu.cols, focus: S.kind === 'curtain' && now < S.boardAt ? -1 : S.menu.focus,
+      menuHint: desktop ? null : settings.oneHand ? 'Look at a button, then pinch' : `${cap(other)} pinch moves, ${free} pinch chooses` };
     const run = S.run, i = run.index, nxt = run.pos < run.order.length - 1 ? run.order[run.pos + 1] : -1;
     return { mode: 'rehearse', level: run.level, words: run.line.words, next: nxt >= 0 ? S.script.lines[nxt].words : null, nextLevel: nxt >= 0 ? run.levels[nxt] : 0, index: i + 1, total: S.script.lines.length, peek: run.peeking, ...topRow() };
   }
@@ -165,7 +179,7 @@ export async function enterRoom({ canvas, settings, own, linkFailed = false, sto
     const n = sc.lines.length, lit = [], anchors = [];
     for (let i = 0; i < n; i++) {
       if (isAnchor(i, n)) anchors.push(i);
-      const on = S.kind === 'menu' ? false : run && run.per[i] ? run.isClean(i) : (run && run.demo ? false : !!data.clean[sc.lines[i].id]);
+      const on = run && S.kind !== 'menu' && run.per[i] ? run.isClean(i) : (run && run.demo && S.kind !== 'menu' ? false : sc.key !== 'try4' && !!data.clean[sc.lines[i].id]);
       if (on) lit.push(i);
     }
     return { total: n, lit, anchors, current: S.kind === 'run' ? run.index : -1 };
@@ -183,14 +197,14 @@ export async function enterRoom({ canvas, settings, own, linkFailed = false, sto
       world.light(run.up ? 'zone' : 'out', run.zone);
       const rawDown = head.pitch < CFG.downDeg;
       if (run.head === 'up' && !rawDown) { if (S.upSince === null) S.upSince = t; } else S.upSince = null;
-      world.veil(settings.fade && !run.peeking && !rawDown && S.upSince !== null && t - S.upSince > 0.4 ? 0.93 : 0);
+      world.veil(settings.fade && !run.peeking && !rawDown && S.upSince !== null && t - S.upSince > 0.4 ? 0.97 : 0);
       const rem = run.remaining;
       world.clock(!run.timed || !run.whole ? { seconds: run.target, target: run.target, state: 'done' } : !run.started ? { seconds: run.target, target: run.target, state: 'normal' }
         : { seconds: Math.abs(rem), target: run.target, state: rem < 0 ? 'over' : rem <= 30 ? 'last30' : 'normal' });
     } else {
       world.veil(0); S.upSince = null;
       if (S.kind === 'curtain') {
-        world.light('full');
+        const r0 = S.result; if (r0 && !S.pendingNotes && t >= S.boardAt + 0.4 && r0.zones.some((z) => z > 0)) world.light('shares', r0.zones); else world.light('full');
         if (S.pendingNotes && t >= S.boardAt) { world.notes(S.pendingNotes); S.pendingNotes = null; }
         const r = S.result; if (r) world.clock(r.targetSec == null ? { seconds: S.script.target, target: S.script.target, state: 'done' } : { seconds: Math.abs(r.targetSec - r.timeSec), target: r.targetSec, state: r.timeSec > r.targetSec ? 'over' : 'done' });
       } else if (S.kind === 'qa' && S.q) {
@@ -206,10 +220,13 @@ export async function enterRoom({ canvas, settings, own, linkFailed = false, sto
         const sc = S.kind === 'menu' && S.menu ? scripts[Math.min(S.menu.focus, scripts.length - 1)] : S.script;
         const tg = sc ? sc.target : 180; world.clock({ seconds: tg, target: tg, state: 'normal' });
       }
-      // menus: the column the head points at takes the focus (the other hand's pinch always works too)
-      if (xr && S.menu && S.kind !== 'run' && head.pitch < -6) {
-        const cols = S.menu.cols, half = 19 * (SIZE[settings.textSize] || 1), u = (head.yaw + half) / (2 * half) * cols, col = Math.floor(u);
-        if (col >= 0 && col < cols && Math.abs(u - col - 0.5) < 0.5 - 1.5 / (2 * half / cols)) { const row = Math.floor(S.menu.focus / cols), f = row * cols + col; if (f < S.menu.buttons.length && f !== S.menu.focus) S.menu.focus = f; }
+      // menus: when the head moves to another column the focus follows; a pinch of the other hand always works too.
+      // The column is not applied while the head stays where it was, or it would fight the pinch.
+      if (xr && S.menu && S.kind !== 'run') {
+        const cols = S.menu.cols, half = 19 * (SIZE[settings.textSize] || 1), u = (head.yaw + half) / (2 * half) * cols;
+        const col = head.pitch < -6 && u >= 0 && u < cols && Math.abs(u - Math.floor(u) - 0.5) < 0.5 - 1.5 / (2 * half / cols) ? Math.floor(u) : null;
+        if (S.menuSeen !== S.menu) { S.menuSeen = S.menu; S.headCol = col; }
+        else if (col !== null && col !== S.headCol) { S.headCol = col; const row = Math.floor(S.menu.focus / cols), f = row * cols + col; if (f < S.menu.buttons.length) S.menu.focus = f; }
       }
     }
     const ms = monitorState(), mk = JSON.stringify(ms); if (mk !== monitorKey) { monitorKey = mk; world.monitor(ms); }
@@ -224,7 +241,7 @@ export async function enterRoom({ canvas, settings, own, linkFailed = false, sto
     for (let i = 0; i < 2; i++) {
       const c = renderer.xr.getController(i);
       const sideOf = (e) => (e.data && (e.data.handedness === 'left' || e.data.handedness === 'right') ? e.data.handedness : free);   // a source that does not say which hand is the free hand
-      c.addEventListener('selectstart', (e) => pinches.press(sideOf(e), now));
+      c.addEventListener('selectstart', (e) => { world.flash(sideOf(e)); pinches.press(sideOf(e), now); });
       c.addEventListener('selectend', (e) => pinches.release(sideOf(e), now));
       const h = renderer.xr.getHand(i); xrHands.push(h);
       h.addEventListener('connected', (e) => { sides[i] = e.data && e.data.handedness; });
@@ -237,8 +254,8 @@ export async function enterRoom({ canvas, settings, own, linkFailed = false, sto
     const seen = { left: false, right: false };
     xrHands.forEach((h, i) => {
       const side = sides[i]; if (side !== 'left' && side !== 'right') return;
-      const js = h.joints ? Object.values(h.joints).filter((j) => j.visible !== false).map((j) => ({ position: j.position, radius: j.jointRadius })) : [];
-      if (h.visible !== false && js.length) { seen[side] = true; world.hand(side, js); }
+      const js = h.joints ? Object.values(h.joints).map((j) => (j.visible === false ? null : { position: j.position, radius: j.jointRadius })) : [];
+      if (h.visible !== false && js.some(Boolean)) { seen[side] = true; world.hand(side, js); }
     });
     for (const side of ['left', 'right']) { if (!seen[side]) { world.hand(side, null); if (S.lostSince[side] == null) S.lostSince[side] = now; } else S.lostSince[side] = null; }
   }

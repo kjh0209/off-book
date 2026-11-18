@@ -110,7 +110,7 @@ export async function buildWorld({ panel = false, textScale = 1 } = {}) {
         const mat = basic({ map, transparent: true, alphaTest: 0.5 });
         const m = new THREE.Mesh(new THREE.PlaneGeometry(personH * 0.5, personH), mat);
         m.position.copy(pos).setY(y0 + personH / 2); m.rotation.y = panel ? 0 : -yaw * deg; room.add(m);
-        const p = { mesh: m, mat, block: bi, cur: LIGHT.half, target: LIGHT.half, wait: 0, stagger: ((seat * 37) % 16) / 100 };
+        const p = { mesh: m, mat, block: bi, cur: LIGHT.half, target: LIGHT.half, wait: 0, stagger: ((seat * 37) % 16) / 100, y0, phase: (seat * 2.399) % 6.283, nod: 0 };
         people.push(p);
         if (!panel && bi === 1 && ri === 0 && k === 1) asker = p;       // front of the centre block, beside the question board
         seat++;
@@ -158,15 +158,28 @@ export async function buildWorld({ panel = false, textScale = 1 } = {}) {
   const notesBoard = board(nw, nw * 1400 / 2048, layout.notes.distance, layout.notes.centreBelowEye, layout.notes.yaw, notesT.t);
   const questionBoard = board(nw, nw * 640 / 1536, layout.notes.distance, 5.8, layout.notes.yaw, questionT.t);
 
-  // ---------- hands: 25 joints each, one instanced mesh per hand ----------
-  const hands = { left: null, right: null }, tmp = new THREE.Object3D();
+  // ---------- hands: 25 joints each, drawn as joints and the bones between them (two instanced meshes per hand) ----------
+  // Joint order is the WebXR one: wrist, then thumb (4), index, middle, ring, little (5 each).
+  const BONES = [[0, 1], [1, 2], [2, 3], [3, 4], [0, 5], [5, 6], [6, 7], [7, 8], [8, 9], [0, 10], [10, 11], [11, 12], [12, 13], [13, 14],
+    [0, 15], [15, 16], [16, 17], [17, 18], [18, 19], [0, 20], [20, 21], [21, 22], [22, 23], [23, 24], [5, 10], [10, 15], [15, 20]];
+  const hands = { left: null, right: null }, tmp = new THREE.Object3D(), up = new THREE.Vector3(0, 1, 0), dv = new THREE.Vector3();
+  // Shaded without lights: a painted sphere (matcap) gives the fingers form. The hands are drawn last, over a cleared
+  // depth buffer, because real hands rest in the lap, which is under the virtual table.
+  const mc = canvasTex(128, 128); mc.draw((c, w, h) => { const g = c.createRadialGradient(w * 0.38, h * 0.32, 2, w * 0.5, h * 0.5, w * 0.56); g.addColorStop(0, '#e6dccb'); g.addColorStop(0.45, '#a89b89'); g.addColorStop(0.85, '#5b5147'); g.addColorStop(1, '#2c2620'); c.fillStyle = '#2c2620'; c.fillRect(0, 0, w, h); c.fillStyle = g; c.fillRect(0, 0, w, h); });
+  const SKIN = new THREE.Color(0xffffff), FLASH = new THREE.Color(1.5, 1.15, 0.6);
+  const bx = new THREE.Vector3(), by = new THREE.Vector3(), bz = new THREE.Vector3(), basis = new THREE.Matrix4();
   for (const side of ['left', 'right']) {
-    const im = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 8, 6), basic({ color: 0x8c8275 }), 25);
-    im.frustumCulled = false; im.visible = false; scene.add(im); hands[side] = im;   // in the scene, not the room: hands live in the user's real space
+    const skin = new THREE.MeshMatcapMaterial({ matcap: mc.t, color: SKIN.clone(), transparent: true });
+    const dots = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 14, 10), skin, 26);          // 25 joints and the palm
+    const bones = new THREE.InstancedMesh(new THREE.CylinderGeometry(1, 1, 1, 10, 1, true), skin, BONES.length);
+    for (const im of [dots, bones]) { im.frustumCulled = false; im.visible = false; scene.add(im); }   // in the scene, not the room: hands live in the user's real space
+    dots.renderOrder = side === 'left' ? 20 : 22; bones.renderOrder = dots.renderOrder + 1;
+    dots.onBeforeRender = (r) => r.clearDepth();
+    hands[side] = { dots, bones, skin, flash: 0 };
   }
 
   // ---------- state the app drives ----------
-  let lightMode = 'half', lightZone = 1, veilTarget = 0, veilCur = 0, fadeOutT = 0.4;
+  let lightMode = 'half', lightZone = 1, lightShares = [1, 1, 1], veilTarget = 0, veilCur = 0, fadeOutT = 0.4, lifeT = 0;
   const api = {
     scene, room, mon, screen, people, blocks, panel,
     monitor(state) { screenT.draw((c, w, h) => drawMonitor(c, w, h, state)); },
@@ -176,19 +189,43 @@ export async function buildWorld({ panel = false, textScale = 1 } = {}) {
     question(data) { if (!data) { questionBoard.visible = false; return; } questionT.draw((c, w, h) => drawQuestion(c, w, h, data)); questionBoard.visible = true; },
     askerHand(up) { if (askerUp) { askerUp.visible = !!up; asker.mesh.visible = !up; } },
     // mode: 'zone' (the block you face), 'out' (looking down), 'half' (menus), 'full' (the end), 'ask' (only the asker)
-    light(mode, zone = 1) { lightMode = mode; lightZone = zone; },
+    // mode: 'zone' (the block you face), 'out', 'half', 'full', 'ask', or 'shares' (each block as bright as its share of your gaze)
+    light(mode, zone = 1) { lightMode = mode; if (Array.isArray(zone)) { const mx = Math.max(1, ...zone); lightShares = zone.map((z) => 0.16 + 0.84 * z / mx); } else lightZone = zone; },
+    // a couple of people in a block dip their heads: they heard that line
+    nod(zone) { const mine = people.filter((p) => p.block === zone); for (let k = 0; k < Math.min(2, mine.length); k++) mine[(Math.floor(lifeT * 7) + k * 3) % mine.length].nod = 0.55 + k * 0.12; },
+    flash(side) { if (hands[side]) hands[side].flash = 0.18; },
     veil(amount) { veilTarget = amount; },
     setFade(sec) { fadeOutT = sec; },
     // put the room where the user is: their eye at the room's eye point, the room's forward along their gaze
     centre(headPos, headYaw) { room.rotation.y = headYaw; room.position.set(headPos.x, headPos.y - E, headPos.z); },
-    hand(side, joints) {          // joints: array of {position, radius} or null when the hand is not seen
-      const im = hands[side]; if (!joints) { im.visible = false; return; }
-      let n = 0; for (const j of joints) { if (!j) continue; tmp.position.copy(j.position); tmp.scale.setScalar(Math.max(0.004, (j.radius || 0.008) * 0.8)); tmp.updateMatrix(); im.setMatrixAt(n++, tmp.matrix); }
-      im.count = n; im.instanceMatrix.needsUpdate = true; im.visible = n > 0;
+    hand(side, joints) {          // joints: 25 entries of {position, radius} (or null) in WebXR order; null when the hand is not seen
+      const { dots, bones } = hands[side]; if (!joints) { dots.visible = bones.visible = false; return; }
+      let n = 0;
+      for (const j of joints) { if (!j) continue; tmp.position.copy(j.position); tmp.quaternion.identity(); tmp.scale.setScalar(Math.max(0.006, (j.radius || 0.009) * 1.02)); tmp.updateMatrix(); dots.setMatrixAt(n++, tmp.matrix); }
+      const w = joints[0], ix = joints[6], md = joints[11], pk = joints[21];
+      if (w && ix && md && pk) {      // the palm: a flat ellipsoid between the wrist and the knuckles
+        bz.subVectors(md.position, w.position); const len = bz.length(); bx.subVectors(pk.position, ix.position); const wid = bx.length();
+        if (len > 1e-3 && wid > 1e-3) {
+          bz.multiplyScalar(1 / len); bx.multiplyScalar(1 / wid); by.crossVectors(bz, bx).normalize(); bx.crossVectors(by, bz).normalize();
+          basis.makeBasis(bx, by, bz); tmp.quaternion.setFromRotationMatrix(basis); tmp.position.copy(w.position).addScaledVector(bz, len * 0.52);
+          tmp.scale.set(wid * 0.72, 0.013, len * 0.58); tmp.updateMatrix(); dots.setMatrixAt(n++, tmp.matrix);
+        }
+      }
+      dots.count = n; dots.instanceMatrix.needsUpdate = true; dots.visible = n > 0;
+      let m = 0;
+      for (const [a, b] of BONES) {
+        const ja = joints[a], jb = joints[b]; if (!ja || !jb) continue;
+        dv.subVectors(jb.position, ja.position); const len = dv.length(); if (len < 1e-4) continue;
+        tmp.position.addVectors(ja.position, jb.position).multiplyScalar(0.5); tmp.quaternion.setFromUnitVectors(up, dv.multiplyScalar(1 / len));
+        const r = Math.max(0.006, Math.min(ja.radius || 0.009, jb.radius || 0.009)); tmp.scale.set(r, len, r); tmp.updateMatrix(); bones.setMatrixAt(m++, tmp.matrix);
+      }
+      bones.count = m; bones.instanceMatrix.needsUpdate = true; bones.visible = m > 0;
     },
     update(dt) {
+      lifeT += dt;
+      for (const side of ['left', 'right']) { const h = hands[side]; if (h.flash > 0) { h.flash -= dt; h.skin.color.copy(h.flash > 0 ? FLASH : SKIN); } }
       for (const p of people) {
-        let target = lightMode === 'full' ? LIGHT.lit : lightMode === 'half' ? LIGHT.half : lightMode === 'out' ? LIGHT.out
+        let target = lightMode === 'full' ? LIGHT.lit : lightMode === 'half' ? LIGHT.half : lightMode === 'out' ? LIGHT.out : lightMode === 'shares' ? lightShares[p.block]
           : lightMode === 'ask' ? (p === asker ? LIGHT.lit : LIGHT.ask) : (p.block === lightZone ? LIGHT.lit : LIGHT.dim);
         if (target !== p.target) { p.wait = target > p.cur ? p.stagger : 0; p.target = target; }
         if (p.wait > 0) { p.wait -= dt; continue; }
@@ -197,6 +234,11 @@ export async function buildWorld({ panel = false, textScale = 1 } = {}) {
         p.cur = p.target > p.cur ? Math.min(p.target, p.cur + step) : Math.max(p.target, p.cur - step);
         // ease in perception: the multiplier is linear light, so square the ramp position
         const g = p.cur; p.mat.color.setRGB(g, g * 0.98, g * 0.94);
+        // signs of life that a flat sprite can carry: slow breathing, sitting a little taller when lit, a small dip of the head
+        const lit = Math.max(0, Math.min(1, (g - LIGHT.dim) / (LIGHT.lit - LIGHT.dim)));
+        const sy = 1 + 0.004 * Math.sin(lifeT * 1.15 + p.phase) + 0.012 * lit;
+        let dip = 0; if (p.nod > 0) { p.nod -= dt; const x = 1 - Math.max(0, p.nod) / 0.6; dip = x > 0 && x < 1 ? 0.014 * Math.sin(Math.PI * x) : 0; }
+        p.mesh.scale.y = sy; p.mesh.position.y = p.y0 + personH * sy / 2 - dip;
       }
       blocks.forEach((b, bi) => {
         const mine = people.filter((p) => p.block === bi); const lv = mine.length ? mine.reduce((s, p) => s + p.cur, 0) / mine.length : 0;

@@ -214,10 +214,12 @@ test('results: a run with no weak lines has an empty list', () => {
   for (let i = 0; i < 4; i++) t = sayClean(run, t);
   assert.deepEqual(run.result().weak, []);
 });
-test('try-out: every line you pass lights its lamp, and the second pass is one step thinner', () => {
+test('try-out: a line lights its lamp once you have looked up, and the second pass is one step thinner', () => {
   const four = splitScript(SAMPLES.try4.text).lines, a = new Run(four, {}, { demo: true, timed: false }); let t = play(a, 0, [[1, DOWN]]);
-  for (let i = 0; i < 4; i++) { t = play(a, t, [[0.6, DOWN]]); a.next(t); }
-  assert.equal([0, 1, 2, 3].filter((i) => a.isClean(i)).length, 4);
+  for (let i = 0; i < 3; i++) { t = play(a, t, [[0.6, DOWN], [0.8, UP]]); a.next(t); }
+  t = play(a, t, [[1.0, DOWN]]); a.next(t);            // the last one read aloud with the head down
+  assert.deepEqual([0, 1, 2, 3].map((i) => a.isClean(i)), [true, true, true, false]);
+  assert.equal(a.result().said, 3);
   const b = new Run(four, {}, { demo: true, demoStep: 1, timed: false });
   assert.deepEqual(b.levels, [1, 1, 1, 1]);
 });

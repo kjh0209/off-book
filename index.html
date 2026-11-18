@@ -145,6 +145,11 @@
   .rail .count { white-space: nowrap; }
   .lamps { flex-wrap: nowrap; overflow: hidden; }
   .sheet-foot button { white-space: nowrap; }
+  #ownbtn { display: none; }
+  body.xr .send, body.xr .send-note, body.xr #copy { display: none; }
+  body.xr:not(.own) .desk { display: none; }
+  body.xr:not(.own) #ownbtn { display: inline-block; font-size: 16px; margin-top: 16px; }
+  body.xr .enter { height: 72px; font-size: 22px; }
   .more { margin: 0; padding: 16px 0 0; border-top: 1px solid var(--hair); }
   .more summary { cursor: pointer; color: var(--n7); height: 24px; }
   .more .set:first-of-type { padding-top: 16px; }
@@ -168,6 +173,7 @@
       <a class="send" id="send" href="#" target="_blank" rel="noopener">Send to headset</a>
       <p class="send-note">Opens this page on your headset with your script inside the link. Needs the same Meta account here and on the headset.</p>
       <button class="copy" id="copy" type="button">Copy the link instead</button>
+      <button class="copy" id="ownbtn" type="button">Use my own script</button>
       <p class="status" id="status" role="status"></p>
     </div>
   </section>

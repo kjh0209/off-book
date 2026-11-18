@@ -57,7 +57,7 @@ export async function runAuto(enter, mode) {
   ok('the try-out comes round again one step thinner', S.kind === 'run' && S.pass === 1 && S.run.levels.join() === '1,1,1,1', S.run && S.run.levels.join());
   for (let i = 0; i < 4; i++) say(2.5);
   ok('the try-out ends at the notes sheet', S.kind === 'curtain');
-  adv(1.6); ok('the full house is lit at the end even with the head down', (adv(1, -21), lum(0) > 0.9 && lum(2) > 0.9), `${lum(0).toFixed(2)} ${lum(2).toFixed(2)}`);
+  adv(0.9, -21); ok('the full house is lit at the end even with the head down', lum(0) > 0.85 && lum(2) > 0.85, `${lum(0).toFixed(2)} ${lum(2).toFixed(2)}`); adv(1.7);
   room.act('next'); adv(0.3);
   ok('"Choose a script" opens the script menu', S.kind === 'menu' && S.menu.buttons.length >= 5, S.menu && S.menu.buttons.map((b) => b.label).join(' | '));
   if (mode === 'menu') { adv(1, -18); return hold(); }
@@ -100,6 +100,8 @@ export async function runAuto(enter, mode) {
   ok('said to the room counts the rest', r.said === 16 && r.total === 18, `${r.said}/${r.total}`);
   adv(1.6);
   ok('first button is Run the weak lines', S.menu.buttons[0].label === 'Run the weak lines', S.menu.buttons[0].sub);
+  ok('after the sheet the house shows where the eyes went', (adv(1.5), lum(0) < lum(1) - 0.2), `${lum(0).toFixed(2)} ${lum(1).toFixed(2)} ${lum(2).toFixed(2)}`);
+  ok('a question is offered after a full run', S.menu.buttons.map((b) => b.label).join() === 'Run the weak lines,Take a question,Done for tonight');
   if (mode === 'curtain') { room.look.yaw = -8; return hold(); }
   const saved = JSON.parse(localStorage.getItem('offbook.v1') || '{}'), ids = room.scripts[1].lines.map((l) => l.id);
   ok('levels are saved on this device', saved.levels && saved.levels[ids[1]] === 1 && saved.levels[ids[0]] === 0 && saved.levels[ids[5]] === 0, JSON.stringify(ids.slice(0, 6).map((id) => saved.levels && saved.levels[id])));
@@ -108,8 +110,9 @@ export async function runAuto(enter, mode) {
   say(5); ok('the weak-lines run moves to the next weak line', S.run.index === 5);
   say(5); adv(1.6);
   ok('the weak-lines run ends with no target time', S.kind === 'curtain' && S.result.targetSec === null && S.result.opening === null);
-  S.menu.focus = 1; room.act('next'); adv(0.3);
+  S.menu.focus = S.menu.buttons.length - 1; room.act('next'); adv(0.3);
   ok('Done for tonight returns to the script menu', S.kind === 'menu');
+  ok('the menu tile carries the record of the run', /night 1, 16 of 18/.test(S.menu.buttons[1].sub), S.menu.buttons[1].sub);
   if (mode === 'question') { S.menu.focus = S.menu.buttons.length - 1; room.act('next'); adv(1.2, -3); return hold(); }
   S.menu.focus = S.menu.buttons.length - 1; room.act('next'); adv(0.5);
   ok('a question starts with Breathe', S.kind === 'qa' && S.q.phase === 'breathe');

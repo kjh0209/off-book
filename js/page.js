@@ -91,13 +91,18 @@ $('copy').addEventListener('click', async () => {
   try { await navigator.clipboard.writeText(link); say('Link copied. Message it to yourself and open it in the headset browser.'); }
   catch { say('Could not copy. Select the address bar after pressing Send to headset, or paste your script in the headset browser.'); }
 });
+$('ownbtn').addEventListener('click', () => { document.body.classList.add('own'); $('text').focus(); });
 $('send').addEventListener('click', (e) => { if (!parsed.lines.length) { e.preventDefault(); say('Paste a script first. Without one the room starts with samples.'); } });
 
 // ---------- the room ----------
 let xrOK = false, room = null, session = null;
-if (navigator.xr && navigator.xr.isSessionSupported) navigator.xr.isSessionSupported('immersive-vr').then((ok) => { xrOK = ok; }).catch(() => {});
+// On a headset the page is a door, not a form: one button, with the script box a tap away.
+if (navigator.xr && navigator.xr.isSessionSupported) navigator.xr.isSessionSupported('immersive-vr').then((ok) => { xrOK = ok; if (ok && params.get('preview') !== '1') document.body.classList.add('xr'); }).catch(() => {});
+// Fetch the room's code and pictures now, so the headset is not left looking at nothing after the button is pressed.
+const mainReady = import('./main.js'); mainReady.catch(() => {});
+for (const u of ['./textures/people.png', './textures/hand_up.png', './textures/panel.png', './textures/people.json', './textures/panel.json']) fetch(u).catch(() => {});
 let linkFailed = false;
-async function enter(auto = false) {
+async function enter(auto = false, extra = {}) {
   const settings = { free: data.settings.hand === 'left' ? 'left' : 'right', oneHand: data.settings.hand === 'one', textSize: data.settings.textSize, room: data.settings.room, mode: data.settings.mode, fade: data.settings.fade !== '0', sound: data.settings.sound !== '0' && !auto };
   if (params.get('fade') === '0') settings.fade = false;
   if (params.get('room') === 'panel' || params.get('room') === 'full') settings.room = params.get('room');
@@ -105,8 +110,8 @@ async function enter(auto = false) {
   if (xrOK && !auto && params.get('preview') !== '1') { try { session = await navigator.xr.requestSession('immersive-vr', { optionalFeatures: ['hand-tracking', 'local-floor'] }); } catch { session = null; } }
   document.body.classList.add('in-room');
   $('keytext').textContent = session ? '' : matchMedia('(pointer: coarse)').matches ? 'Preview: tap to go on, drag to look, press and hold to see the line, two fingers to pause.' : 'Preview without a headset: Space goes on, hold S to read, drag to look around, Left goes back, hold Down to see the line, P pauses.';
-  const { enterRoom } = await import('./main.js');
-  room = await enterRoom({ canvas: $('stage'), settings, own: parsed.lines.length ? { title: data.own.title, text: data.own.text, target: data.own.target } : null, linkFailed, store, xr: session || false, auto,
+  const { enterRoom } = await mainReady;
+  room = await enterRoom({ canvas: $('stage'), settings, own: parsed.lines.length ? { title: data.own.title, text: data.own.text, target: data.own.target } : null, linkFailed, store, xr: session || false, auto, ...extra,
     onLeave: () => { document.body.classList.remove('in-room'); const s = session; session = null; room = null; if (s) s.end().catch(() => {}); data = load(); } });
   return room;
 }
@@ -115,7 +120,7 @@ $('leave').addEventListener('click', () => { if (room) room.S && room.stop(); do
 
 // ---------- start ----------
 (async () => {
-  if (params.get('auto')) { try { localStorage.removeItem(KEY); } catch { /* nothing kept */ } data = blank(); }   // a test run starts as a first visit
+  if (params.get('auto') || params.get('capture')) { try { localStorage.removeItem(KEY); } catch { /* nothing kept */ } data = blank(); }   // a test run starts as a first visit
   const m = location.hash.match(/[#&]s=([^&]+)/);
   if (m) {
     const st = await unpackState(m[1]);
@@ -124,6 +129,7 @@ $('leave').addEventListener('click', () => { if (room) room.S && room.stop(); do
     history.replaceState(null, '', location.pathname + location.search);
   }
   parse(); $('text').value = plainText(); $('name').value = data.own.title; renderSettings(); renderLines();
+  if (params.get('capture')) { const { runCapture } = await import('./capture.js'); runCapture(enter, params).catch((e) => console.error('CAPTURE ERROR ' + (e && e.stack || e))); return; }
   if (params.get('auto')) { const { runAuto } = await import('./auto.js'); runAuto(enter, params.get('auto')).catch((e) => console.error('AUTO ERROR ' + (e && e.stack || e))); }
 })();
 window.__offbook = { hash, get data() { return data; }, get room() { return room; } };
