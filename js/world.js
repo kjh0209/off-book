@@ -235,11 +235,21 @@ export async function buildWorld({ panel = false, textScale = 1, mr = false } = 
   const handsReady = simpleHands ? Promise.resolve(false) : (async () => {
     try {
       const { GLTFLoader } = await import('../vendor/GLTFLoader.js'), loader = new GLTFLoader();
+      let skinPhoto = null, greyMc = null;
+      try {
+        skinPhoto = await new THREE.TextureLoader().loadAsync(new URL('../textures/skin.jpg', import.meta.url).href); skinPhoto.colorSpace = THREE.SRGBColorSpace; skinPhoto.wrapS = skinPhoto.wrapT = THREE.RepeatWrapping;
+        const c = document.createElement('canvas'); c.width = c.height = 256; const x = c.getContext('2d'); x.filter = 'grayscale(1) brightness(1.45)'; x.drawImage(skinMc.t.image, 0, 0, 256, 256); greyMc = new THREE.CanvasTexture(c); greyMc.colorSpace = skinMc.t.colorSpace;
+      } catch (e) { skinPhoto = null; }
       const made = await Promise.all(['left', 'right'].map(async (side) => {
         const root = (await loader.loadAsync(new URL(`../models/hand_${side}.glb`, import.meta.url).href)).scene;
         let mesh = null; root.traverse((o) => { if (o.isSkinnedMesh) mesh = o; });
         const bn = JOINT_NAMES.map((n) => root.getObjectByName(n)); if (!mesh || bn.some((b) => !b)) throw new Error('hand mesh');
         const mat = new THREE.MeshMatcapMaterial({ matcap: skinMc.t, color: SKIN.clone(), transparent: true });
+        if (skinPhoto) {            // real skin: a patch photographed from the back of a hand, tiled over the mesh; the matcap keeps only the shading
+          const g = mesh.geometry, pos = g.attributes.position; g.computeBoundingBox(); const bb = g.boundingBox, span = Math.max(bb.max.x - bb.min.x, bb.max.y - bb.min.y, bb.max.z - bb.min.z) || 1, k = 2.6 / span;
+          const uv = new Float32Array(pos.count * 2); for (let i = 0; i < pos.count; i++) { uv[i * 2] = pos.getX(i) * k; uv[i * 2 + 1] = pos.getZ(i) * k; } g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+          mat.map = skinPhoto; mat.matcap = greyMc || skinMc.t; mat.color.setRGB(1.680, 1.594, 1.525); SKIN.copy(mat.color); mat.needsUpdate = true;
+        }
         mesh.material = mat; mesh.frustumCulled = false; mesh.renderOrder = side === 'left' ? 20 : 22; mesh.onBeforeRender = (r) => r.clearDepth();
         const cuff = new THREE.Mesh(cuffGeo, new THREE.MeshMatcapMaterial({ matcap: cuffMc.t, vertexColors: true, transparent: true, side: THREE.DoubleSide }));
         cuff.frustumCulled = false; cuff.renderOrder = mesh.renderOrder + 1; cuff.visible = handsParam !== 'bare'; bn[0].add(cuff);       // rides the wrist bone: its z runs back along the forearm (?hands=bare leaves it off)
