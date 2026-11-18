@@ -190,16 +190,16 @@ export async function runCapture(enter, params, emu = false) {
       mark('n_step1'); await run(D.n_step1 + 0.4);
       mark('n_step2'); await run(1.3); mark('up'); look(ROOM, 2); await run(D.n_step2 - 1.3 + 0.3); mark('u_1'); await run(D.u_1 + 0.5);
       mark('n_step3'); await run(1.3); mark('pinch'); await pinch('right'); look(DOWN, 0); await run(Math.max(1.0, D.n_step3 - 2.5 + 0.6));
-      mark('n_face'); await run(0.9); look(ROOM, -17); await run(D.n_face - 0.9 + 0.3); mark('u_2'); await run(D.u_2 + 0.5); await pinch('right'); await run(0.3);
+      mark('n_face'); await run(0.9); look(ROOM, -17); await run(2.0); look(ROOM, 15); await run(Math.max(1.2, D.n_face - 2.9 + 0.5)); mark('u_2'); await run(D.u_2 + 0.5); await pinch('right'); await run(0.3);
       mark('loop');
-      look(DOWN, 0); await run(1.3); look(ROOM, 0); await run(0.9); mark('n_down'); await run(1.7); mark('down'); look(DOWN, 0); await run(D.n_down - 1.7 + 0.9);
+      look(DOWN, 0); await run(1.3); look(ROOM, 0); await run(0.9); mark('n_down'); await run(D.n_down * 0.52); mark('down'); look(-17, 0); await run(D.n_down * 0.48 + 1.3);
       mark('n_keep'); look(ROOM, 0); await run(D.n_keep + 0.5); mark('u_3'); await run(D.u_3 + 0.5); await pinch('right'); await run(1.0);
     },
     // 0. sitting down: the one pinch of setup, then choosing a script from the monitor
     async start() {
       room.data.seen.try4 = 1; cur.pitch = -6; look(ROOM, 0); hand.right.liftTo = 0.45; hand.left.liftTo = 0.3; await run(0.8);
       mark('n_centre'); await run(Math.max(1.5, D.n_centre - 1.6)); mark('centre'); await pinch('right'); await run(0.8);
-      look(-17, 0); await run(0.5); mark('n_menu'); await run(0.8); await menuGo(1); mark('chosen'); look(DOWN, 0); await run(1.2);
+      look(-17, 0); if (S.menu) S.menu.focus = 0; await run(0.5); mark('n_menu'); await run(1.0); await menuGo(1); mark('chosen'); look(DOWN, 0); await run(1.2);
     },
     // 2. a later night: one line down to its first word, one to key words, and one pulled back with the other hand
     async tour2() {
@@ -215,13 +215,15 @@ export async function runCapture(enter, params, emu = false) {
       room.data.seen.try4 = 1;
       room.act('next'); await run(0.2); S.menu.focus = 1; room.act('next'); look(ROOM, 0); await run(0.3);
       const yaws = [0, -14, 14, 0, -13, 15, 0, 13, -15, 0, 14, 0, -13, 12, 0, -14, 13];
-      quiet = true;
+      quiet = true; let began = null;
+      const off = (sec, pitch, yaw) => { for (let k = 0; k < Math.round(sec * 30); k++) { t += 1 / 30; room.look.pitch = pitch; room.look.yaw = yaw; room.step(t); } };
       for (let i = 0; i < 17; i++) {            // the run up to its last line goes by off camera; its sounds are not laid on the track
-        const r = S.run; if (i === 4) { r.peek(true); for (let k = 0; k < 30; k++) { t += 1 / 30; room.look.pitch = ROOM; room.step(t); } r.peek(false); }
-        const up = r.minUp(r.index) + 0.3, looks = i === 9 ? 2 : 1;
-        for (let L = 0; L < looks; L++) { for (let k = 0; k < 24; k++) { t += 1 / 30; room.look.pitch = DOWN; room.look.yaw = 0; room.step(t); } for (let k = 0; k < Math.round((L === looks - 1 ? up : 1.2) * 30); k++) { t += 1 / 30; room.look.pitch = ROOM; room.look.yaw = yaws[i]; room.step(t); } }
+        const r = S.run; if (i === 4) { r.peek(true); off(0.6, ROOM, 0); r.peek(false); }
+        off(0.45, DOWN, 0); if (began === null) began = t; off(i === 7 || i === 12 ? 1.0 : r.minUp(r.index) + 0.08, ROOM, yaws[i]);      // two lines hurried, as in any real run
         room.act('next');
       }
+      off(Math.max(0, 55.5 - (t - began)), ROOM, 0);      // sit with them until about three seconds are left
+      console.log('CAPTURE off-camera run took ' + (t - began).toFixed(1) + ' s');
       quiet = false; cur.pitch = ROOM; cur.yaw = 0; look(ROOM, 0); hand.right.liftTo = 0.45; hand.left.liftTo = 0.3; await run(1.0);
       mark('n_clock'); await run(D.n_clock + 0.3);
       mark('n_land'); await run(2.6); look(DOWN, 0); await run(D.n_land - 2.6 + 0.3); look(ROOM, 3); await run(0.7); mark('u_last'); await run(D.u_last + 0.5); await pinch('right');
