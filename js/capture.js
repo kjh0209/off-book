@@ -199,7 +199,7 @@ export async function runCapture(enter, params, emu = false) {
     async start() {
       room.data.seen.try4 = 1; cur.pitch = -6; look(ROOM, 0); hand.right.liftTo = 0.45; hand.left.liftTo = 0.3; await run(0.8);
       mark('n_centre'); await run(Math.max(1.5, D.n_centre - 1.6)); mark('centre'); await pinch('right'); await run(0.8);
-      look(-17, 0); if (S.menu) S.menu.focus = 0; await run(0.5); mark('n_menu'); await run(1.0); await menuGo(1); mark('chosen'); look(DOWN, 0); await run(1.2);
+      look(-17, 0); await run(0.5); mark('n_menu'); await run(1.0); await menuGo(S.menu.focus); mark('chosen'); look(DOWN, 0); await run(1.2);
     },
     // 2. a later night: one line down to its first word, one to key words, and one pulled back with the other hand
     async tour2() {
