@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Off Book</title>
+<link rel="icon" href="./favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="./js/tokens.css">
+<style>
+  :root {
+    --hair: color-mix(in srgb, var(--n8) 9%, transparent);
+    --ink-rule: color-mix(in srgb, var(--ink) 16%, transparent);
+    /* the pencil stroke, two hands of it; coloured by whatever sits behind the mask */
+    --pencil-a: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 6' preserveAspectRatio='none'%3E%3Cpath d='M1 3.6C18 1.6 34 4.8 52 3 68 1.6 84 3.8 99 2.4' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E");
+    --pencil-b: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 6' preserveAspectRatio='none'%3E%3Cpath d='M1 2.4C14 4.2 30 1.8 47 3.4 64 4.8 82 2 99 3.4' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E");
+    --pencil-heavy: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 8' preserveAspectRatio='none'%3E%3Cpath d='M2 5C20 2.4 38 6 56 3.8 72 2 86 4.6 98 3' fill='none' stroke='%23000' stroke-width='2.6' stroke-linecap='round' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E");
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--n0); }
+  body { font-family: var(--ui); font-size: 15px; line-height: 20px; color: var(--n8); -webkit-font-smoothing: antialiased; }
+  button { font: inherit; color: inherit; }
+  a:focus-visible, button:focus-visible, [contenteditable]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .page { max-width: 1280px; min-height: 800px; margin: 0 auto; padding: 32px 48px; }
+
+  /* header */
+  .top { display: flex; align-items: center; justify-content: space-between; height: 40px; }
+  .wordmark { font-size: 24px; line-height: 40px; font-weight: 600; color: var(--n8); text-decoration: none; letter-spacing: 0.005em; }
+  .wordmark .book { position: relative; display: inline-block; }
+  .wordmark .book::after { content: ""; position: absolute; left: -2px; right: -3px; bottom: 2px; height: 8px; background: var(--accent); -webkit-mask: var(--pencil-heavy) center / 100% 100% no-repeat; mask: var(--pencil-heavy) center / 100% 100% no-repeat; }
+  .where { font-size: 14px; color: var(--n6); }
+  .rule { height: 1px; background: var(--hair); margin: 16px 0 23px; }
+
+  /* title block */
+  .title { display: grid; grid-template-columns: 1fr 272px; column-gap: 32px; align-items: start; }
+  h1 { margin: 0; max-width: 800px; font-size: 36px; line-height: 44px; font-weight: 500; letter-spacing: -0.01em; }
+  .context { margin: 16px 0 0; color: var(--n6); }
+  .enter { display: block; width: 100%; height: 56px; border: 0; border-radius: var(--r-control); background: var(--n8); color: var(--n0); font-size: 18px; font-weight: 600; cursor: pointer; transition: background-color var(--fast) var(--ease), transform var(--fast) var(--ease); }
+  .enter:hover { background: var(--n7); }
+  .enter:active { transform: scale(0.985); }
+  .send { display: inline-block; margin-top: 12px; height: 24px; line-height: 24px; font-size: 16px; color: var(--n7); text-decoration: underline; text-decoration-color: var(--n5); text-underline-offset: 4px; transition: color var(--fast) var(--ease); }
+  .send:hover { color: var(--n8); }
+  .send-note { margin: 4px 0 0; font-size: 13px; line-height: 20px; color: var(--n6); }
+
+  /* the desk: script sheet, monitor, switches */
+  .desk { display: grid; grid-template-columns: 400fr 448fr 272fr; grid-template-areas: "sheet levels settings"; column-gap: 32px; align-items: start; margin-top: 24px; }
+
+  /* pencil underline and ruled blank, shared by sheet and monitor */
+  .k { position: relative; display: inline-block; white-space: nowrap; }
+  .k::after { content: ""; position: absolute; left: -2px; right: -2px; bottom: -1px; height: 6px; background: var(--accent); -webkit-mask: var(--pencil-a) center / 100% 100% no-repeat; mask: var(--pencil-a) center / 100% 100% no-repeat; }
+  .k:nth-of-type(even)::after { -webkit-mask-image: var(--pencil-b); mask-image: var(--pencil-b); }
+  .b { color: transparent; background: linear-gradient(var(--n5), var(--n5)) 0 calc(100% - 5px) / 100% 2px no-repeat; user-select: none; }
+
+  /* monitor */
+  .levels { grid-area: levels; }
+  .monitor { background: var(--n1); border: 1px solid var(--hair); border-radius: var(--r-card); }
+  .rail { display: flex; align-items: center; justify-content: space-between; height: 44px; padding: 0 24px; border-bottom: 1px solid var(--hair); }
+  .lamps { display: flex; align-items: center; gap: 8px; margin: 0; padding: 0; list-style: none; }
+  .lamps li { position: relative; width: 12px; height: 12px; border-radius: 50%; background: var(--n4); }
+  .lamps .anchor { border-radius: 2px; }
+  .lamps .lit { background: var(--accent); }
+  .lamps .gap { margin-left: 12px; }
+  .lamps .now::after { content: ""; position: absolute; left: 1px; right: 1px; bottom: -8px; height: 2px; background: var(--n8); }
+  .rail .count { font-family: var(--mono); font-size: 13px; color: var(--n6); font-variant-numeric: tabular-nums; }
+  .rows { margin: 0; padding: 20px 24px 24px; }
+  .rows div + div { margin-top: 16px; }
+  .rows dt { font-size: 13px; line-height: 20px; color: var(--n6); }
+  .rows dd { margin: 0; min-height: 30px; font-size: 20px; line-height: 30px; font-weight: 500; color: var(--n8); }
+  .rows .long { display: inline-block; width: 12em; max-width: 60%; height: 2px; margin-left: 8px; background: var(--n5); vertical-align: 3px; }
+  .rows .none { font-size: 15px; font-weight: 400; color: var(--n6); }
+  .caption { margin: 12px 0 0; font-size: 14px; line-height: 20px; color: var(--n6); }
+
+  /* script sheet */
+  .sheet { grid-area: sheet; background: var(--paper); color: var(--ink); border-radius: calc(var(--r-control) / 2); padding: 20px 24px 12px; }
+  .sheet-head { display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 12px; border-bottom: 1px solid var(--ink-rule); }
+  .sheet-head h2 { margin: 0; font-size: 16px; line-height: 24px; font-weight: 600; }
+  .sheet-head span { font-size: 13px; color: var(--n4); }
+  .lines { margin: 12px 0 0; padding: 0; list-style: none; font-size: 16px; line-height: 26px; }
+  .lines:focus-visible { outline-color: var(--ink); }
+  .lines li { display: grid; grid-template-columns: 8px 20px 1fr; column-gap: 8px; }
+  .lines li + li { margin-top: 6px; }
+  .lines .sq { width: 8px; height: 8px; margin-top: 9px; border-radius: 2px; background: transparent; }
+  .lines .anchor .sq { background: var(--ink); }
+  .lines .n { font-family: var(--mono); font-size: 13px; color: var(--n4); text-align: right; font-variant-numeric: tabular-nums; }
+  .sheet .k::after { background: var(--accent-dim); }
+  .sheet-foot { display: flex; justify-content: space-between; align-items: center; height: 44px; margin-top: 12px; border-top: 1px solid var(--ink-rule); font-size: 13px; color: var(--n4); }
+  .sheet-foot .count { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .sheet-foot button { height: 32px; padding: 0 8px; margin-right: -8px; border: 0; border-radius: calc(var(--r-control) / 2); background: transparent; color: var(--ink); cursor: pointer; text-decoration: underline; text-decoration-color: var(--n5); text-underline-offset: 3px; }
+
+  /* switches */
+  .settings { grid-area: settings; }
+  .set { padding: 16px 0; border-top: 1px solid var(--hair); }
+  .set:first-child { padding-top: 0; border-top: 0; }
+  .set-name { display: flex; justify-content: space-between; align-items: baseline; height: 20px; margin-bottom: 8px; }
+  .set-name span { font-size: 13px; color: var(--n6); }
+  .seg, .step { display: flex; gap: 2px; height: 40px; padding: 2px; background: var(--n1); border: 1px solid var(--hair); border-radius: var(--r-control); }
+  .seg button, .step button { height: 34px; border: 0; border-radius: calc(var(--r-control) - 2px); background: transparent; color: var(--n7); cursor: pointer; transition: background-color var(--fast) var(--ease), color var(--fast) var(--ease); }
+  .seg button { flex: 1; }
+  .seg button:hover, .step button:hover { color: var(--n8); }
+  .seg button[aria-pressed="true"] { background: var(--n3); color: var(--n8); }
+  .step button { width: 40px; font-size: 18px; line-height: 1; }
+  .step button:hover { background: var(--n2); }
+  .step output { flex: 1; text-align: center; font-family: var(--mono); font-size: 18px; line-height: 34px; font-variant-numeric: tabular-nums; color: var(--n8); }
+
+  @media (max-width: 1100px) {
+    .page { padding: 24px; }
+    .title { grid-template-columns: 1fr; row-gap: 24px; }
+    .go { max-width: 400px; }
+    .desk { grid-template-columns: 1fr 1fr; grid-template-areas: "sheet levels" "settings settings"; row-gap: 32px; }
+    .settings { display: grid; grid-template-columns: 1fr 1fr; column-gap: 32px; }
+    .set:nth-child(2) { padding-top: 0; border-top: 0; }
+  }
+  @media (max-width: 720px) {
+    .page { padding: 20px 16px 32px; }
+    .where { display: none; }
+    h1 { font-size: 28px; line-height: 36px; }
+    .go { max-width: none; }
+    .desk { grid-template-columns: 1fr; grid-template-areas: "levels" "sheet" "settings"; }
+    .rail { padding: 0 16px; }
+    .rows { padding: 16px 16px 20px; }
+    .sheet { padding: 16px 16px 8px; }
+    .settings { display: block; }
+    .set:nth-child(2) { padding-top: 16px; border-top: 1px solid var(--hair); }
+  }
+
+  /* working parts added for the app */
+  .sheet textarea { display: block; width: 100%; min-height: 148px; margin: 12px 0 0; padding: 10px 12px; border: 1px solid var(--ink-rule); border-radius: 4px; background: color-mix(in srgb, var(--paper) 86%, #fff); color: var(--ink); font: inherit; font-size: 16px; line-height: 24px; resize: vertical; }
+  .sheet textarea:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+  .sheet input.name { width: 60%; border: 0; border-bottom: 1px solid transparent; background: transparent; color: var(--ink); font: inherit; font-size: 16px; line-height: 24px; font-weight: 600; padding: 0; }
+  .sheet input.name:hover, .sheet input.name:focus { border-bottom-color: var(--ink-rule); outline: 0; }
+  .sheet .how { margin: 10px 0 0; font-size: 13px; line-height: 18px; color: var(--n4); }
+  .lines .w { cursor: pointer; border-radius: 2px; }
+  .lines .w:hover { background: color-mix(in srgb, var(--ink) 9%, transparent); }
+  .lines button.w { border: 0; padding: 0; background: transparent; font: inherit; color: inherit; }
+  .sheet-foot .acts { display: flex; gap: 4px; }
+  .warn { margin: 8px 0 0; font-size: 13px; line-height: 18px; color: var(--ink); font-weight: 500; }
+  .copy { display: inline-block; margin: 8px 0 0; padding: 0; border: 0; background: transparent; color: var(--n7); font-size: 14px; text-decoration: underline; text-decoration-color: var(--n5); text-underline-offset: 4px; cursor: pointer; }
+  .copy:hover { color: var(--n8); }
+  .status { margin: 8px 0 0; min-height: 20px; font-size: 13px; line-height: 20px; color: var(--accent); }
+  #stage { position: fixed; inset: 0; width: 100vw; height: 100vh; display: none; background: var(--n0); touch-action: none; z-index: 10; }
+  #keys { position: fixed; left: 0; right: 0; bottom: 0; z-index: 11; display: none; padding: 10px 16px; background: color-mix(in srgb, var(--n0) 82%, transparent); color: var(--n7); font-size: 14px; line-height: 20px; text-align: center; }
+  #keys button { margin-left: 16px; border: 0; background: transparent; color: var(--n8); text-decoration: underline; text-underline-offset: 4px; cursor: pointer; font: inherit; }
+  body.in-room #stage, body.in-room #keys { display: block; }
+  body.in-room .page { display: none; }
+  .rail .count { white-space: nowrap; }
+  .lamps { flex-wrap: nowrap; overflow: hidden; }
+  .sheet-foot button { white-space: nowrap; }
+  .more { margin: 0; padding: 16px 0 0; border-top: 1px solid var(--hair); }
+  .more summary { cursor: pointer; color: var(--n7); height: 24px; }
+  .more .set:first-of-type { padding-top: 16px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="top">
+    <a class="wordmark" href="./" aria-label="Off Book">Off <span class="book">Book</span></a>
+    <span class="where">Runs in the browser on Meta Quest</span>
+  </header>
+  <div class="rule"></div>
+
+  <section class="title">
+    <div>
+      <h1>Rehearse your pitch, toast or interview answer until you can say it with your eyes up</h1>
+      <p class="context">It does not listen, and nothing leaves this device unless you send it yourself.</p>
+    </div>
+    <div class="go">
+      <button class="enter" id="enter" type="button">Enter the room</button>
+      <a class="send" id="send" href="#" target="_blank" rel="noopener">Send to headset</a>
+      <p class="send-note">Opens this page on your headset with your script inside the link. Needs the same Meta account here and on the headset.</p>
+      <button class="copy" id="copy" type="button">Copy the link instead</button>
+      <p class="status" id="status" role="status"></p>
+    </div>
+  </section>
+
+  <main class="desk">
+    <section class="levels" aria-label="How a line thins">
+      <div class="monitor">
+        <div class="rail"><ul class="lamps" id="lamps" aria-hidden="true"></ul><span class="count" id="railcount"></span></div>
+        <dl class="rows" id="rows"></dl>
+      </div>
+      <p class="caption">A line loses words each time you read it once, look up and say it to the room. Your first two lines and your last one go all the way to blank. The rest stop at key words. A line&rsquo;s light comes on when you say it to the room.</p>
+    </section>
+
+    <section class="sheet" aria-label="Your script">
+      <div class="sheet-head"><input class="name" id="name" aria-label="Name of your script" maxlength="28" value="My script"><span>one sentence to a line</span></div>
+      <textarea id="text" spellcheck="true" aria-label="Paste your script here" placeholder="Paste your script here. One sentence to a line works best."></textarea>
+      <p class="how">Underlined words stay at the Key words level. Click a word to change it.</p>
+      <ol class="lines" id="lines"></ol>
+      <p class="warn" id="warn" hidden></p>
+      <p class="how count" id="count" style="font-family:var(--mono)"></p>
+      <div class="sheet-foot"><span></span><span class="acts"><button type="button" id="reset" title="Every line of this script goes back to the Read level">Start again from Read</button><button type="button" id="clear">Clear</button></span></div>
+    </section>
+
+    <section class="settings" aria-label="Settings">
+      <div class="set"><div class="set-name">Free hand <span>the one that clicks</span></div>
+        <div class="seg" data-key="hand"><button type="button" data-v="left">Left</button><button type="button" data-v="right">Right</button><button type="button" data-v="one">One hand</button></div></div>
+      <div class="set"><div class="set-name">Text size <span>on the monitor</span></div>
+        <div class="seg" data-key="textSize"><button type="button" data-v="regular">Regular</button><button type="button" data-v="large">Large</button><button type="button" data-v="largest">Largest</button></div></div>
+      <div class="set"><div class="set-name">Room <span>who sits in the chairs</span></div>
+        <div class="seg" data-key="room"><button type="button" data-v="full">Full room</button><button type="button" data-v="panel">Panel of three</button></div></div>
+      <div class="set"><div class="set-name">Target time <span>for your own script</span></div>
+        <div class="step"><button type="button" id="less" aria-label="Thirty seconds less">&minus;</button><output id="target">3:00</output><button type="button" id="more" aria-label="Thirty seconds more">+</button></div></div>
+      <details class="more"><summary>More settings</summary>
+        <div class="set"><div class="set-name">Learn <span>how far lines thin</span></div>
+          <div class="seg" data-key="mode"><button type="button" data-v="skeleton">Outline</button><button type="button" data-v="full">Every word</button></div></div>
+        <div class="set"><div class="set-name">Words while you look up <span>on the monitor</span></div>
+          <div class="seg" data-key="fade"><button type="button" data-v="1">Fade</button><button type="button" data-v="0">Stay</button></div></div>
+        <div class="set"><div class="set-name">Sound <span>click, chime, applause</span></div>
+          <div class="seg" data-key="sound"><button type="button" data-v="1">On</button><button type="button" data-v="0">Off</button></div></div>
+      </details>
+    </section>
+  </main>
+</div>
+<canvas id="stage"></canvas>
+<div id="keys"><span id="keytext"></span><button type="button" id="leave">Leave the room</button></div>
+
+<script type="importmap">{ "imports": { "three": "./vendor/three.module.js" } }</script>
+<script type="module" src="./js/page.js"></script>
+</body>
+</html>

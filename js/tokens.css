@@ -1,0 +1,8 @@
+@import url('./fonts.css');
+:root {
+  --n0:#0a0908; --n1:#12100e; --n2:#1b1815; --n3:#27231f; --n4:#3a342e; --n5:#5e554b; --n6:#8c8275; --n7:#bdb1a0; --n8:#ece3d4;
+  --paper:#cdbfa8; --ink:#1a1612; --accent:#f0b45a; --accent-dim:#7a5a2c; --clock:#ff4a36; --clock-ghost:#1f0d0b;
+  --ui:'Atkinson Hyperlegible Next', system-ui, sans-serif; --mono:'Atkinson Hyperlegible Mono', ui-monospace, monospace;
+  --ease:cubic-bezier(0.2,0,0,1); --fast:120ms; --base:240ms; --slow:600ms;
+  --r-control:8px; --r-card:12px; --r-panel:16px;
+}

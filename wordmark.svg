@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 184 64" width="184" height="64" role="img" aria-label="Off Book">
+  <g font-family="'Atkinson Hyperlegible Next', 'Atkinson Hyperlegible', system-ui, sans-serif" font-weight="600" font-size="40" fill="#ece3d4">
+    <text x="4" y="42" textLength="59" lengthAdjust="spacing">Off</text>
+    <text x="73" y="42" textLength="97" lengthAdjust="spacing">Book</text>
+  </g>
+  <path d="M71 53.5C88 50.2 106 54.6 124 52 141 49.8 158 52.8 173 50.8" fill="none" stroke="#f0b45a" stroke-width="3" stroke-linecap="round"/>
+</svg>

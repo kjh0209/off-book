@@ -1,0 +1,5 @@
+@font-face { font-family: 'Atkinson Hyperlegible Mono'; font-style: normal; font-weight: 400; font-display: block; src: url('../fonts/AtkinsonHyperlegibleMono-400.woff2') format('woff2'); }
+@font-face { font-family: 'Atkinson Hyperlegible Mono'; font-style: normal; font-weight: 500; font-display: block; src: url('../fonts/AtkinsonHyperlegibleMono-500.woff2') format('woff2'); }
+@font-face { font-family: 'Atkinson Hyperlegible Next'; font-style: normal; font-weight: 400; font-display: block; src: url('../fonts/AtkinsonHyperlegibleNext-400.woff2') format('woff2'); }
+@font-face { font-family: 'Atkinson Hyperlegible Next'; font-style: normal; font-weight: 500; font-display: block; src: url('../fonts/AtkinsonHyperlegibleNext-500.woff2') format('woff2'); }
+@font-face { font-family: 'Atkinson Hyperlegible Next'; font-style: normal; font-weight: 600; font-display: block; src: url('../fonts/AtkinsonHyperlegibleNext-600.woff2') format('woff2'); }
