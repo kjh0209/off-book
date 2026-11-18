@@ -117,7 +117,7 @@ if (navigator.xr && navigator.xr.isSessionSupported) navigator.xr.isSessionSuppo
 if (navigator.xr && navigator.xr.isSessionSupported) navigator.xr.isSessionSupported('immersive-vr').then((ok) => { xrOK = ok; if (ok && params.get('preview') !== '1') document.body.classList.add('xr'); }).catch(() => {});
 // Fetch the room's code and pictures now, so the headset is not left looking at nothing after the button is pressed.
 const mainReady = import('./main.js'); mainReady.catch(() => {});
-for (const u of ['./textures/people.png', './textures/hand_up.png', './textures/panel.png', './textures/people.json', './textures/panel.json']) fetch(u).catch(() => {});
+for (const u of ['./textures/people.png', './textures/hand_up.png', './textures/panel.png', './textures/people.json', './textures/panel.json', './textures/people_room.png', './textures/people_room.json', './models/hand_left.glb', './models/hand_right.glb']) fetch(u).catch(() => {});
 let linkFailed = false;
 async function enter(auto = false, extra = {}) {
   const settings = { free: data.settings.hand === 'left' ? 'left' : 'right', oneHand: data.settings.hand === 'one', textSize: data.settings.textSize, room: data.settings.room, mode: data.settings.mode, fade: data.settings.fade !== '0', sound: data.settings.sound !== '0' && !auto };

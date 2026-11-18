@@ -11,25 +11,32 @@ const FPS = 30, deg = Math.PI / 180;
 
 // ---------- a hand: 25 joints in WebXR order, built from a wrist pose, a curl and a pinch amount ----------
 const FINGERS = [   // base on the palm (x toward the little finger for a right hand, z forward is negative), and three bone lengths plus tip
-  { base: [-0.026, 0.003, -0.090], len: [0.042, 0.025, 0.021] },   // index
-  { base: [-0.002, 0.006, -0.096], len: [0.046, 0.029, 0.022] },   // middle
-  { base: [0.019, 0.003, -0.090], len: [0.042, 0.027, 0.021] },    // ring
-  { base: [0.037, -0.002, -0.081], len: [0.033, 0.020, 0.019] },    // little
+  // the proportions of the hand mesh the app draws (models/hand_*.glb), so the scripted joints do not stretch it
+  { base: [-0.0236, -0.0073, -0.0886], len: [0.0453, 0.0243, 0.0116] },   // index
+  { base: [-0.0018, -0.0025, -0.0917], len: [0.0468, 0.0276, 0.0122] },   // middle
+  { base: [0.0174, -0.0065, -0.0847], len: [0.0429, 0.0266, 0.0120] },    // ring
+  { base: [0.0350, -0.0137, -0.0739], len: [0.0346, 0.0203, 0.0119] },    // little
 ];
 const RAD = [0.021, 0.019, 0.013, 0.010, 0.008];
-function handJoints(side, wrist, quat, pinch = 0, curl = 0.35) {
+export function handJoints(side, wrist, quat, pinch = 0, curl = 0.35) {
   const mirror = side === 'left' ? -1 : 1, out = [], v = (x, y, z) => new THREE.Vector3(x * mirror, y, z);
   const local = [v(0, 0, 0)];
   // thumb: metacarpal, proximal, distal, tip. It swings toward the index tip as the pinch closes.
-  const t0 = v(-0.028, -0.008, -0.030), t1 = v(-0.050, -0.016, -0.056), t2 = v(-0.056, -0.026, -0.084), t3 = v(-0.056, -0.034, -0.106);
+  const t0 = v(-0.0281, -0.0191, -0.0360), t1 = v(-0.0450, -0.0343, -0.0592), t2 = v(-0.0670, -0.0437, -0.0831), t3 = v(-0.0779, -0.0489, -0.0917);
   const fingerPts = FINGERS.map((f, fi) => {
     const pts = [v(f.base[0] * 0.45, f.base[1], -0.03), v(...f.base)];
-    let a = (curl + (fi === 0 ? pinch * 0.55 : 0)) * 0.9, p = pts[1].clone();
-    f.len.forEach((L, k) => { a += (curl + (fi === 0 ? pinch * 0.5 : 0)) * (k === 0 ? 0.6 : 0.9); p = p.clone().add(new THREE.Vector3(0, -Math.sin(a) * L, -Math.cos(a) * L)); pts.push(p); });
+    let a = (curl + (fi === 0 ? pinch * 0.12 : 0)) * 0.9, p = pts[1].clone();
+    f.len.forEach((L, k) => { a += (curl + (fi === 0 ? pinch * 0.38 : 0)) * (k === 0 ? 0.6 : 0.9); p = p.clone().add(new THREE.Vector3(0, -Math.sin(a) * L, -Math.cos(a) * L)); pts.push(p); });
     return pts;
   });
+  // the pinch: the thumb's base comes across the palm, and its two end bones reach the index tip at their own lengths (so the mesh keeps its shape)
   const meet = fingerPts[0][4].clone().add(new THREE.Vector3(-0.004 * mirror, -0.004, 0.004));
-  const thumb = [t0, t1, t2.clone().lerp(meet.clone().add(v(-0.006, 0.004, 0.02)), pinch * 0.8), t3.clone().lerp(meet, pinch)];
+  const p1 = t1.clone().lerp(v(-0.040, -0.042, -0.062), pinch), L1 = 0.0338, L2 = 0.0131;
+  const dir = meet.clone().sub(p1), d = Math.max(1e-4, dir.length()); dir.multiplyScalar(1 / d);
+  const along = Math.min(L1, (L1 * L1 - L2 * L2 + d * d) / (2 * d)), out2 = v(-1, 0.35, 0); out2.addScaledVector(dir, -out2.dot(dir)).normalize();      // the knuckle bows outward, away from the palm
+  const k2 = p1.clone().addScaledVector(dir, along).addScaledVector(out2, Math.sqrt(Math.max(0, L1 * L1 - along * along)));
+  const k3 = d >= L1 + L2 ? p1.clone().addScaledVector(dir, L1 + L2) : meet;
+  const thumb = [t0, p1, t2.clone().lerp(k2, pinch), t3.clone().lerp(k3, pinch)];
   local.push(...thumb); fingerPts.forEach((pts) => local.push(...pts));
   const radii = [0.022, 0.017, 0.013, 0.011, 0.009];
   local.forEach((p, i) => {
@@ -58,6 +65,7 @@ export async function runCapture(enter, params, emu = false) {
     console.log('CAPTURE emulator session ' + mode);
   }
   const room = await enter(opts, emu ? { session: opts.session, fov: 64 } : { sim: true, fov: +(params.get('fov') || 64) }), S = room.S, c = room.renderer.domElement;
+  await room.world.handsReady;       // film the hands the app draws once their mesh is in, not the fallback of the first frames
   if (room.world.mr) {       // no camera in a simulator: a photograph of a real room stands in for passthrough
     const tex = await new THREE.TextureLoader().loadAsync('./shots/room.jpg'); tex.colorSpace = THREE.SRGBColorSpace;
     room.world.backdrop(tex, +(params.get('turn') || 0));
@@ -110,6 +118,8 @@ export async function runCapture(enter, params, emu = false) {
   const mark = (name) => events.push({ name: 'mark:' + name, t: +(frame / FPS).toFixed(3) });
   const menuGo = async (index) => { look(-17, 0); await run(0.6); while (S.menu && S.menu.focus !== index) { await pinch('left'); await run(0.2); } await run(0.3); await pinch('right'); await run(0.4); };
 
+  // lengths of the film's voice clips, so the performance waits exactly as long as each one lasts
+  let D = {}; try { D = (await (await fetch('./shots/voice.json')).json()).durations; } catch (e) { console.log('CAPTURE no voice lengths'); }
   // ---------- the scenes ----------
   const SCENES = {
     // emulator smoke test: centre with a pinch, pass two try-out lines, pinch with the other hand
@@ -171,6 +181,53 @@ export async function runCapture(enter, params, emu = false) {
       mark('land'); await run(2.1);                    // the last word: stay with one person
       mark('house'); look(ROOM, 12); await run(1.5); look(ROOM, -8); await run(1.6); mark('notes'); look(-2, -14); await run(4.6); mark('result'); look(ROOM, 8); await run(3.2);
       look(-17, -4); await run(1.2); mark('weak'); await pinch('right'); await run(1.6);
+    },
+    // ---- the narrated film: every wait is as long as the voice clip that plays over it (lengths in shots/voice.json) ----
+    // 1. what it is, then the loop in three steps, then two lines at a natural pace, then looking down
+    async tour() {
+      room.data.seen.try4 = 1; room.act('next'); cur.pitch = DOWN; look(DOWN, 0); for (let k = 0; k < 6; k++) { t += 1 / FPS; room.step(t); } S.menu.focus = 1; room.act('next'); frame = 0; hand.right.liftTo = 0.45; hand.left.liftTo = 0.3;
+      await run(0.4); mark('n_intro'); await run(2.2); look(ROOM, 0); await run(3.0); look(ROOM, -14); await run(2.3); look(ROOM, 12); await run(2.3); look(DOWN, 0); await run(Math.max(0.8, D.n_intro - 9.8 + 0.6));
+      mark('n_step1'); await run(D.n_step1 + 0.4);
+      mark('n_step2'); await run(1.3); mark('up'); look(ROOM, 2); await run(D.n_step2 - 1.3 + 0.3); mark('u_1'); await run(D.u_1 + 0.5);
+      mark('n_step3'); await run(1.3); mark('pinch'); await pinch('right'); look(DOWN, 0); await run(Math.max(1.0, D.n_step3 - 2.5 + 0.6));
+      mark('n_face'); await run(0.9); look(ROOM, -17); await run(D.n_face - 0.9 + 0.3); mark('u_2'); await run(D.u_2 + 0.5); await pinch('right'); await run(0.3);
+      mark('loop');
+      look(DOWN, 0); await run(1.3); look(ROOM, 0); await run(0.9); mark('n_down'); await run(1.7); mark('down'); look(DOWN, 0); await run(D.n_down - 1.7 + 0.9);
+      mark('n_keep'); look(ROOM, 0); await run(D.n_keep + 0.5); mark('u_3'); await run(D.u_3 + 0.5); await pinch('right'); await run(1.0);
+    },
+    // 0. sitting down: the one pinch of setup, then choosing a script from the monitor
+    async start() {
+      room.data.seen.try4 = 1; cur.pitch = -6; look(ROOM, 0); hand.right.liftTo = 0.45; hand.left.liftTo = 0.3; await run(0.8);
+      mark('n_centre'); await run(Math.max(1.5, D.n_centre - 1.6)); mark('centre'); await pinch('right'); await run(0.8);
+      look(-17, 0); await run(0.5); mark('n_menu'); await run(0.8); await menuGo(1); mark('chosen'); look(DOWN, 0); await run(1.2);
+    },
+    // 2. a later night: one line down to its first word, one to key words, and one pulled back with the other hand
+    async tour2() {
+      room.data.seen.try4 = 1; const lines = room.scripts[1].lines;
+      lines.forEach((l, i) => { room.data.levels[l.id] = i === 0 ? 2 : 1; room.data.clean[l.id] = i < 9 ? 1 : 0; });
+      room.act('next'); await run(0.2); S.menu.focus = 1; room.act('next'); cur.pitch = DOWN; look(DOWN, 0); hand.right.liftTo = 0.45; hand.left.liftTo = 0.3; await run(1.0);
+      mark('n_thin_a'); await run(D.n_thin_a + 0.3); look(ROOM, 0); await run(0.6); mark('u_1'); await run(D.u_1 + 0.4); await pinch('right'); await run(0.2);
+      look(DOWN, 0); await run(1.1); look(ROOM, -14); await run(0.6); mark('u_stall2'); await run(D.u_stall2 + 0.3);
+      mark('n_stuck'); await run(1.3); await holdStart('left'); look(DOWN, 0); mark('peek'); await run(Math.max(2.4, D.n_stuck - 1.7 + 0.6)); await holdEnd('left'); look(ROOM, -14); await run(0.7); mark('u_2'); await run(D.u_2 + 0.5); await pinch('right'); await run(0.6);
+    },
+    // 3. the end of a run: the clock, the last line, two seconds with them, the notes, and the room again
+    async tour3() {
+      room.data.seen.try4 = 1;
+      room.act('next'); await run(0.2); S.menu.focus = 1; room.act('next'); look(ROOM, 0); await run(0.3);
+      const yaws = [0, -14, 14, 0, -13, 15, 0, 13, -15, 0, 14, 0, -13, 12, 0, -14, 13];
+      quiet = true;
+      for (let i = 0; i < 17; i++) {            // the run up to its last line goes by off camera; its sounds are not laid on the track
+        const r = S.run; if (i === 4) { r.peek(true); for (let k = 0; k < 30; k++) { t += 1 / 30; room.look.pitch = ROOM; room.step(t); } r.peek(false); }
+        const up = r.minUp(r.index) + 0.3, looks = i === 9 ? 2 : 1;
+        for (let L = 0; L < looks; L++) { for (let k = 0; k < 24; k++) { t += 1 / 30; room.look.pitch = DOWN; room.look.yaw = 0; room.step(t); } for (let k = 0; k < Math.round((L === looks - 1 ? up : 1.2) * 30); k++) { t += 1 / 30; room.look.pitch = ROOM; room.look.yaw = yaws[i]; room.step(t); } }
+        room.act('next');
+      }
+      quiet = false; cur.pitch = ROOM; cur.yaw = 0; look(ROOM, 0); hand.right.liftTo = 0.45; hand.left.liftTo = 0.3; await run(1.0);
+      mark('n_clock'); await run(D.n_clock + 0.3);
+      mark('n_land'); await run(2.6); look(DOWN, 0); await run(D.n_land - 2.6 + 0.3); look(ROOM, 3); await run(0.7); mark('u_last'); await run(D.u_last + 0.5); await pinch('right');
+      mark('land'); await run(2.1);
+      mark('house'); look(ROOM, 12); await run(1.5); look(ROOM, -8); await run(1.6); look(-2, -14); await run(0.5); mark('n_notes'); await run(D.n_notes + 0.9);
+      mark('result'); look(ROOM, 4); await run(1.6);
     },
     // one question from the room
     async question() {

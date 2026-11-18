@@ -48,9 +48,24 @@ export async function runAuto(enter, mode) {
     console.log(`AUTO DONE ${checks.length - failed.length}/${checks.length}` + (failed.length ? ' FAILED: ' + failed.join(' | ') : ''));
     return;
   }
+  if (mode === 'hands') {          // both hands in front of the eyes, to check how they are drawn: &pose=rest|pinch|hold, &room=mine for the stand-in room
+    const THREE = await import('three'), { handJoints } = await import('./capture.js'), q = new URLSearchParams(location.search), pose = q.get('pose') || 'rest', deg = Math.PI / 180;
+    if (room.world.mr) { const tex = await new THREE.TextureLoader().loadAsync('./shots/room.jpg'); tex.colorSpace = THREE.SRGBColorSpace; room.world.backdrop(tex, -105); }
+    console.log('HANDS mesh ' + await room.world.handsReady);
+    room.data.seen.try4 = 1; adv(0.3); room.act('next'); adv(0.3); S.menu.focus = 1; room.act('next'); adv(0.6, +(q.get('pitch') || -16), 0);
+    for (const side of ['right', 'left']) {
+      const m = side === 'left' ? -1 : 1, lift = pose === 'rest' ? 0.45 : side === 'right' ? (pose === 'pinch' ? 1 : 0.45) : (pose === 'hold' ? 0.5 : 0.45), pin = (side === 'right' && pose === 'pinch') || (side === 'left' && pose === 'hold') ? 1 : 0;
+      const wrist = new THREE.Vector3(m * 0.3, 0.76, -0.33).lerp(new THREE.Vector3(m * 0.21, 1.0, -0.45), lift), quat = new THREE.Quaternion().setFromEuler(new THREE.Euler((26 + 16 * lift) * deg, m * 20 * deg, -m * (38 - 10 * lift) * deg, 'YXZ'));
+      if (pose === 'tracked') {        // joints with orientations, as a headset gives them: the mesh's own open pose, moved to where the wrist is
+        const B = room.world.handBind(side), turn = quat.clone().multiply(B[0].quaternion.clone().invert()), o = B[0].position.clone();
+        room.world.hand(side, B.map((b) => ({ position: b.position.sub(o).applyQuaternion(turn).add(wrist), quaternion: turn.clone().multiply(b.quaternion), radius: 0.009 })));
+      } else room.world.hand(side, handJoints(side, wrist, quat, pin, 0.42 + 0.12 * pin));
+    }
+    return hold();
+  }
   if (mode === 'minedown') {       // my room: look up at the middle, pass a line, look down, and report every person's state
-    const dump = (tag) => console.log('MINE ' + tag + ' ' + room.world.people.map((p) => `${p.cur.toFixed(2)}/${p.mat.opacity.toFixed(2)}/${p.mesh.visible ? 'v' : '-'}/${p.focus}`).join(' '));
-    room.data.seen.try4 = 1; adv(0.3); room.act('next'); adv(0.3); S.menu.focus = 1; room.act('next'); adv(0.5, -21); adv(3, -3, 2); dump('up');
+    const dump = (tag) => console.log('MINE ' + tag + ' ' + room.world.people.map((p) => `x${p.mesh.position.x.toFixed(2)}z${p.mesh.position.z.toFixed(2)}:${p.cur.toFixed(2)}/${(+p.focus).toFixed(2)}`).join(' '));
+    room.data.seen.try4 = 1; adv(0.3); room.act('next'); adv(0.3); S.menu.focus = 1; room.act('next'); adv(0.5, -21); adv(3, -3, 2); dump('up'); adv(3, -3, -17); dump('left'); adv(3, -3, 16); dump('right');
     room.act('next'); adv(0.3, -3, 2); adv(2.5, -21, 0); dump('down'); adv(3, -3, 2); room.act('next'); adv(2.5, -21, 0); dump('down2');
     for (let i = 0; i < 6; i++) { adv(0.8, -21, 0); adv(4.5, -3, i % 2 ? 12 : -12); room.act('next'); } adv(2.5, -21, 0); dump('down3'); return;
   }

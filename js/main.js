@@ -276,7 +276,7 @@ export async function enterRoom({ canvas, settings, own, linkFailed = false, sto
     const seen = { left: false, right: false };
     xrHands.forEach((h, i) => {
       const side = sides[i]; if (side !== 'left' && side !== 'right') return;
-      const js = h.joints ? Object.values(h.joints).map((j) => (j.visible === false ? null : { position: j.position, radius: j.jointRadius })) : [];
+      const js = h.joints ? Object.values(h.joints).map((j) => (j.visible === false ? null : { position: j.position, quaternion: j.quaternion, radius: j.jointRadius })) : [];
       if (h.visible !== false && js.some(Boolean)) { seen[side] = true; world.hand(side, js); }
     });
     for (const side of ['left', 'right']) { if (!seen[side]) { world.hand(side, null); if (S.lostSince[side] == null) S.lostSince[side] = now; } else S.lostSince[side] = null; }

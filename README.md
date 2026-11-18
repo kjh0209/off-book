@@ -45,4 +45,5 @@ Add to the address, for example `?down=-15&hold=0.3`:
 - `js/world.js`: the room (three.js r170, unlit, canvas textures)
 - `js/main.js`: states, input (hands, keys, touch), XR session
 - `js/draw/`: canvas drawings (monitor, clock, notes sheet, question card, textures) and synthesized sound
+- `models/hand_left.glb`, `models/hand_right.glb`: the WebXR generic hand mesh (`@webxr-input-profiles/assets`, MIT), drawn with a painted skin shading and a sleeve; `vendor/GLTFLoader.js` (three.js r170, MIT) loads it. `?hands=simple` draws the jointed hand instead, `?hands=bare` leaves the sleeve off.
 - `textures/`: audience sprites. These were made with an image-generation model, then cut and flattened in code.

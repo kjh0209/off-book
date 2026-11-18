@@ -93,8 +93,9 @@ export async function buildWorld({ panel = false, textScale = 1, mr = false } = 
 
   // ---------- audience ----------
   const A = layout.audience, personH = 1.3, firstRow = 4.6, rowDepth = 0.85, riserH = 0.25, seatGap = 0.66;
-  const peopleT = await img(panel ? './textures/panel.png' : './textures/people.png');
-  const meta = await (await fetch(panel ? './textures/panel.json' : './textures/people.json')).json();
+  const atlasName = panel ? 'panel' : mr ? 'people_room' : 'people';      // my room: its own seven, photographed facing you
+  const peopleT = await img(`./textures/${atlasName}.png`);
+  const meta = await (await fetch(`./textures/${atlasName}.json`)).json();
   const handT = panel ? null : await img('./textures/hand_up.png');
   const poolT = canvasTex(256, 256); poolT.draw(drawPool);
   const shadowT = canvasTex(128, 128); shadowT.draw((c, w, h) => { const g = c.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2); g.addColorStop(0, 'rgba(0,0,0,0.62)'); g.addColorStop(0.6, 'rgba(0,0,0,0.28)'); g.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = g; c.fillRect(0, 0, w, h); });
@@ -114,8 +115,9 @@ export async function buildWorld({ panel = false, textScale = 1, mr = false } = 
         if (panel && !(ri === 0 && k === 0)) { seat++; continue; }
         if (mr && !panel && ri !== (bi === 1 ? 1 : 0)) { seat++; continue; }     // my room: seven people in one arc (two, three, two), one to a seat
         let pos = panel ? new THREE.Vector3((bi - 1) * 0.78, 0, -3.3) : dir.clone().multiplyScalar(d).add(right.clone().multiplyScalar((k - (n - 1) / 2) * seatGap));
-        if (mr && !panel) { const a = (yaw + (ri === 0 ? (k - 0.5) * 7 : (k - 1) * 7) * (ri === 0 ? 1 : 0.0)) * deg; const slot = MR_SLOTS[mrSeat++ % MR_SLOTS.length]; pos = new THREE.Vector3(Math.sin(slot * deg) * 2.7, 0, -Math.cos(slot * deg) * 2.7); void a; }
-        const i = panel ? bi : seat % meta.count, flip = !panel && seat >= meta.count;
+        if (mr && !panel) { const a = (yaw + (ri === 0 ? (k - 0.5) * 7 : (k - 1) * 7) * (ri === 0 ? 1 : 0.0)) * deg; const far = mrSeat % 2 === 0 ? 2.7 : 2.35;     /* two short rows, as chairs go in a small room: three in front, four behind and between them (a real person is wider than the nine degrees between seats) */
+          const slot = MR_SLOTS[mrSeat++ % MR_SLOTS.length]; pos = new THREE.Vector3(Math.sin(slot * deg) * far, 0, -Math.cos(slot * deg) * far); void a; }
+        const i = panel ? bi : mr ? (mrSeat - 1) % meta.count : seat % meta.count, flip = !panel && !mr && seat >= meta.count;
         const map = peopleT.clone(); map.repeat.set((flip ? -1 : 1) / meta.cols, 1 / meta.rows);
         map.offset.set(((i % meta.cols) + (flip ? 1 : 0)) / meta.cols, 1 - (Math.floor(i / meta.cols) + 1) / meta.rows); map.needsUpdate = true;
         const mat = basic({ map, transparent: true, alphaTest: mr ? 0.02 : 0.5, depthWrite: !mr });
@@ -151,8 +153,9 @@ export async function buildWorld({ panel = false, textScale = 1, mr = false } = 
   // the asker's raised hand: a second sprite on the same seat, shown only while the question is being asked
   let askerUp = null;
   if (asker && handT) {
-    askerUp = new THREE.Mesh(new THREE.PlaneGeometry(personH, personH), basic({ map: handT, transparent: true, alphaTest: 0.5 }));
-    askerUp.position.copy(asker.mesh.position); askerUp.rotation.copy(asker.mesh.rotation); askerUp.visible = false; room.add(askerUp);
+    const upH = personH * 1.25;      // the raised arm needs the extra quarter; the picture keeps the seated figure's size and its feet on the same line
+    askerUp = new THREE.Mesh(new THREE.PlaneGeometry(upH, upH), basic({ map: handT, transparent: true, alphaTest: 0.5 }));
+    askerUp.position.copy(asker.mesh.position); askerUp.position.y += (upH - personH) / 2; askerUp.rotation.copy(asker.mesh.rotation); askerUp.visible = false; room.add(askerUp);
   }
   const lampOn = new THREE.Color(0xffe2b4), lampOff = new THREE.Color(0x2a2018), shadeOn = new THREE.Color(0x2b2620), shadeOff = new THREE.Color(0x141210), riserOn = new THREE.Color(0x3a2e24), riserOff = new THREE.Color(0x100d0b);
 
@@ -185,7 +188,7 @@ export async function buildWorld({ panel = false, textScale = 1, mr = false } = 
   // Shaded without lights: a painted sphere (matcap) gives the fingers form. The hands are drawn last, over a cleared
   // depth buffer, because real hands rest in the lap, which is under the virtual table.
   const mc = canvasTex(128, 128); mc.draw((c, w, h) => { const g = c.createRadialGradient(w * 0.38, h * 0.32, 2, w * 0.5, h * 0.5, w * 0.56); g.addColorStop(0, '#e6dccb'); g.addColorStop(0.45, '#a89b89'); g.addColorStop(0.85, '#5b5147'); g.addColorStop(1, '#2c2620'); c.fillStyle = '#2c2620'; c.fillRect(0, 0, w, h); c.fillStyle = g; c.fillRect(0, 0, w, h); });
-  const SKIN = new THREE.Color(0xffffff), FLASH = new THREE.Color(1.5, 1.15, 0.6);
+  const SKIN = new THREE.Color(0xffffff), FLASH = new THREE.Color(1.5, 1.15, 0.6), FLASH_SKIN = new THREE.Color(1.22, 1.1, 0.92);
   const bx = new THREE.Vector3(), by = new THREE.Vector3(), bz = new THREE.Vector3(), basis = new THREE.Matrix4();
   for (const side of ['left', 'right']) {
     const skin = new THREE.MeshMatcapMaterial({ matcap: mc.t, color: SKIN.clone(), transparent: true });
@@ -197,11 +200,62 @@ export async function buildWorld({ panel = false, textScale = 1, mr = false } = 
     hands[side] = { dots, bones, skin, flash: 0 };
   }
 
+  // ---------- skinned hands: a hand mesh (WebXR generic hand, MIT) driven joint by joint, with a painted skin shading ----------
+  // The jointed hand above stays as the fallback: it is drawn until the mesh has loaded, if it fails to load, or with ?hands=simple.
+  const JOINT_NAMES = ['wrist', 'thumb-metacarpal', 'thumb-phalanx-proximal', 'thumb-phalanx-distal', 'thumb-tip',
+    ...['index', 'middle', 'ring', 'pinky'].flatMap((f) => ['metacarpal', 'phalanx-proximal', 'phalanx-intermediate', 'phalanx-distal', 'tip'].map((s) => `${f}-finger-${s}`))];
+  const CHAINS = [[1, 2, 3, 4], [5, 6, 7, 8, 9], [10, 11, 12, 13, 14], [15, 16, 17, 18, 19], [20, 21, 22, 23, 24]];
+  const skinMc = canvasTex(256, 256); skinMc.draw((c, w, h) => {
+    c.fillStyle = '#5a3527'; c.fillRect(0, 0, w, h);                                           // the grazing edge: deep, warm
+    let g = c.createRadialGradient(w * 0.5, h * 0.5, w * 0.1, w * 0.5, h * 0.5, w * 0.52); g.addColorStop(0, '#c69c86'); g.addColorStop(0.55, '#b08269'); g.addColorStop(0.84, '#855643'); g.addColorStop(1, '#5e3a2d'); c.fillStyle = g; c.fillRect(0, 0, w, h);
+    g = c.createRadialGradient(w * 0.44, h * 0.3, 0, w * 0.46, h * 0.38, w * 0.56); g.addColorStop(0, 'rgba(232,206,188,0.6)'); g.addColorStop(0.5, 'rgba(214,176,154,0.32)'); g.addColorStop(1, 'rgba(214,176,154,0)'); c.fillStyle = g; c.fillRect(0, 0, w, h);   // soft light from above, no hard shine: skin, not plastic
+  });
+  // a sleeve from the wrist back along the forearm, fading out: it covers the open end of the hand mesh
+  const cuffMc = canvasTex(128, 128); cuffMc.draw((c, w, h) => { c.fillStyle = '#14151a'; c.fillRect(0, 0, w, h); const g = c.createRadialGradient(w * 0.44, h * 0.34, 2, w * 0.5, h * 0.5, w * 0.54); g.addColorStop(0, '#565b66'); g.addColorStop(0.5, '#353942'); g.addColorStop(1, '#16171c'); c.fillStyle = g; c.fillRect(0, 0, w, h); });
+  const cuffGeo = new THREE.CylinderGeometry(1, 1, 1, 28, 8, true); cuffGeo.rotateX(Math.PI / 2);
+  { const P = cuffGeo.attributes.position, col = new Float32Array(P.count * 4);
+    for (let i = 0; i < P.count; i++) { const t = P.getZ(i) + 0.5, hem = t < 0.04 ? 1.05 : 1; P.setXYZ(i, P.getX(i) * (0.0315 + 0.016 * t) * hem + 0.001, P.getY(i) * (0.0235 + 0.017 * t) * hem, -0.012 + 0.27 * t); col.set([1, 1, 1, 1 - Math.min(1, Math.max(0, (t - 0.45) / 0.5)) ** 1.4], i * 4); }
+    cuffGeo.setAttribute('color', new THREE.BufferAttribute(col, 4)); }
+  const hq = new THREE.Quaternion(), sw = new THREE.Quaternion(), d0 = new THREE.Vector3(), d1 = new THREE.Vector3();
+  // the hand's own frame from four joints: z from the middle knuckle back to the wrist, x across the knuckles
+  const handFrame = (J, out) => { bz.subVectors(J[0].position, J[11].position).normalize(); bx.subVectors(J[21].position, J[6].position); by.crossVectors(bz, bx).normalize(); bx.crossVectors(by, bz).normalize(); return out.setFromRotationMatrix(basis.makeBasis(bx, by, bz)); };
+  function poseSkinned(sk, joints) {
+    const tracked = !!joints[0].quaternion;                  // a tracked hand brings each joint's orientation; a scripted one brings positions only
+    for (let i = 0; i < 25; i++) { sk.bones[i].position.copy(joints[i].position); if (tracked) sk.bones[i].quaternion.copy(joints[i].quaternion); }
+    if (tracked) return;
+    handFrame(joints, hq).multiply(sk.frameInv);            // how the whole hand has turned from the pose the mesh was made in
+    sk.bones[0].quaternion.copy(hq).multiply(sk.bindQ[0]);
+    for (const ch of CHAINS) for (let k = 0; k < ch.length; k++) {      // each bone then swings from where it pointed to where it points now
+      const i = ch[k], c = ch[k + 1];
+      if (c !== undefined) { d0.subVectors(sk.bind[c].position, sk.bind[i].position).normalize().applyQuaternion(hq); d1.subVectors(joints[c].position, joints[i].position).normalize(); sw.setFromUnitVectors(d0, d1); }
+      sk.bones[i].quaternion.copy(sw).multiply(hq).multiply(sk.bindQ[i]);
+    }
+  }
+  const handsParam = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('hands') : null, simpleHands = handsParam === 'simple';
+  const handsReady = simpleHands ? Promise.resolve(false) : (async () => {
+    try {
+      const { GLTFLoader } = await import('../vendor/GLTFLoader.js'), loader = new GLTFLoader();
+      const made = await Promise.all(['left', 'right'].map(async (side) => {
+        const root = (await loader.loadAsync(new URL(`../models/hand_${side}.glb`, import.meta.url).href)).scene;
+        let mesh = null; root.traverse((o) => { if (o.isSkinnedMesh) mesh = o; });
+        const bn = JOINT_NAMES.map((n) => root.getObjectByName(n)); if (!mesh || bn.some((b) => !b)) throw new Error('hand mesh');
+        const mat = new THREE.MeshMatcapMaterial({ matcap: skinMc.t, color: SKIN.clone(), transparent: true });
+        mesh.material = mat; mesh.frustumCulled = false; mesh.renderOrder = side === 'left' ? 20 : 22; mesh.onBeforeRender = (r) => r.clearDepth();
+        const cuff = new THREE.Mesh(cuffGeo, new THREE.MeshMatcapMaterial({ matcap: cuffMc.t, vertexColors: true, transparent: true, side: THREE.DoubleSide }));
+        cuff.frustumCulled = false; cuff.renderOrder = mesh.renderOrder + 1; cuff.visible = handsParam !== 'bare'; bn[0].add(cuff);       // rides the wrist bone: its z runs back along the forearm (?hands=bare leaves it off)
+        const bind = bn.map((b) => ({ position: b.position.clone() }));
+        return { side, sk: { root, mesh, mat, bones: bn, bind, bindQ: bn.map((b) => b.quaternion.clone()), frameInv: handFrame(bind, new THREE.Quaternion()).invert() } };
+      }));
+      for (const { side, sk } of made) { sk.root.visible = false; scene.add(sk.root); hands[side].sk = sk; }
+      return true;
+    } catch (e) { return false; }                           // no mesh: the jointed hand carries on
+  })();
+
   // ---------- state the app drives ----------
   let reachedSet = null;
   let lightMode = 'half', lightZone = 1, lightShares = [1, 1, 1], veilTarget = 0, veilCur = 0, fadeOutT = 0.4, lifeT = 0;
   const api = {
-    scene, room, mon, screen, people, blocks, panel, mr,
+    scene, room, mon, screen, people, blocks, panel, mr, handsReady,
     monitor(state) { screenT.draw((c, w, h) => drawMonitor(c, w, h, state)); },
     rail(state) { railT.draw((c, w, h) => drawRail(c, w, h, state)); },
     clock(state) { const key = `${Math.ceil(Math.abs(state.seconds))}|${state.target}|${state.state}`; if (key === clockKey) return; clockKey = key; clockT.draw((c, w, h) => drawClock(c, w, h, state)); },
@@ -226,8 +280,13 @@ export async function buildWorld({ panel = false, textScale = 1, mr = false } = 
     setFade(sec) { fadeOutT = sec; },
     // put the room where the user is: their eye at the room's eye point, the room's forward along their gaze
     centre(headPos, headYaw) { room.rotation.y = headYaw; room.position.set(headPos.x, headPos.y - E, headPos.z); },
+    handBind(side) { const sk = hands[side].sk; return sk ? sk.bind.map((b, i) => ({ position: b.position.clone(), quaternion: sk.bindQ[i].clone() })) : null; },   // the mesh's own pose, for checking the tracked path without a headset
     hand(side, joints) {          // joints: 25 entries of {position, radius} (or null) in WebXR order; null when the hand is not seen
-      const { dots, bones } = hands[side]; if (!joints) { dots.visible = bones.visible = false; return; }
+      const { dots, bones, sk } = hands[side]; if (!joints) { dots.visible = bones.visible = false; if (sk) sk.root.visible = false; return; }
+      if (sk) {               // the skinned hand needs all 25 joints; with any missing, this frame falls back to the jointed one
+        let whole = joints.length >= 25; for (let i = 0; whole && i < 25; i++) whole = !!joints[i];
+        sk.root.visible = whole; if (whole) { poseSkinned(sk, joints); dots.visible = bones.visible = false; return; }
+      }
       let n = 0;
       for (const j of joints) { if (!j) continue; tmp.position.copy(j.position); tmp.quaternion.identity(); tmp.scale.setScalar(Math.max(0.006, (j.radius || 0.009) * 1.02)); tmp.updateMatrix(); dots.setMatrixAt(n++, tmp.matrix); }
       const w = joints[0], ix = joints[6], md = joints[11], pk = joints[21];
@@ -251,7 +310,7 @@ export async function buildWorld({ panel = false, textScale = 1, mr = false } = 
     },
     update(dt) {
       lifeT += dt;
-      for (const side of ['left', 'right']) { const h = hands[side]; if (h.flash > 0) { h.flash -= dt; h.skin.color.copy(h.flash > 0 ? FLASH : SKIN); } }
+      for (const side of ['left', 'right']) { const h = hands[side]; if (h.flash > 0) { h.flash -= dt; h.skin.color.copy(h.flash > 0 ? FLASH : SKIN); if (h.sk) h.sk.mat.color.copy(h.flash > 0 ? FLASH_SKIN : SKIN); } }
       for (const p of people) {
         const pi = people.indexOf(p);
         let target = lightMode === 'reached' ? (reachedSet && reachedSet.has(pi) ? LIGHT.lit : 0.42) : lightMode === 'full' ? LIGHT.lit : lightMode === 'half' ? LIGHT.half : lightMode === 'out' ? LIGHT.out : lightMode === 'shares' ? lightShares[p.block]
@@ -264,7 +323,7 @@ export async function buildWorld({ panel = false, textScale = 1, mr = false } = 
         // ease in perception: the multiplier is linear light, so square the ramp position
         const g = p.cur;
         // my room: people are solid whenever the head is up (no ghosts); the ones you face are brighter; they fade away only when you look down
-        if (mr) { const b = g <= LIGHT.dim ? 0.36 : 0.36 + 0.64 * Math.pow((g - LIGHT.dim) / (LIGHT.lit - LIGHT.dim), 1.5); /* the one you face stands out clearly from the rest */ p.mat.color.setRGB(b, b * 0.98, b * 0.94); p.alpha = p.alpha === undefined ? 0 : p.alpha; const want = lightMode === 'out' ? 0 : 1; p.alpha = want > p.alpha ? Math.min(1, p.alpha + dt / 0.6) : Math.max(0, p.alpha - dt / 0.4); p.mat.opacity = p.alpha; p.mesh.visible = p.alpha > 0.01; if (p.shadow) { p.shadow.material.opacity = p.mat.opacity; p.shadow.visible = p.mesh.visible; } }
+        if (mr) { const b = g <= LIGHT.dim ? 0.4 : 0.4 + 0.6 * Math.pow((g - LIGHT.dim) / (LIGHT.lit - LIGHT.dim), 1.5);      /* photographs of people: below half they stop looking like people in a lit room */ /* the one you face stands out clearly from the rest */ p.mat.color.setRGB(b, b * 0.98, b * 0.94); p.alpha = p.alpha === undefined ? 0 : p.alpha; const want = lightMode === 'out' ? 0 : 1; p.alpha = want > p.alpha ? Math.min(1, p.alpha + dt / 0.6) : Math.max(0, p.alpha - dt / 0.4); p.mat.opacity = p.alpha; p.mesh.visible = p.alpha > 0.01; if (p.shadow) { p.shadow.material.opacity = p.mat.opacity; p.shadow.visible = p.mesh.visible; } }
         else p.mat.color.setRGB(g, g * 0.98, g * 0.94);
         // signs of life that a flat sprite can carry: slow breathing, sitting a little taller when lit, a small dip of the head
         const lit = Math.max(0, Math.min(1, (g - LIGHT.dim) / (LIGHT.lit - LIGHT.dim)));
