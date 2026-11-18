@@ -39,17 +39,29 @@ function handJoints(side, wrist, quat, pinch = 0, curl = 0.35) {
   return out;
 }
 
-export async function runCapture(enter, params) {
-  const scene = params.get('capture'), W = +(params.get('w') || 1920), H = +(params.get('h') || 1080);
+// emu: run inside Meta's Immersive Web Emulation Runtime, so the app is in a real WebXR session with emulated head and hands
+export async function runCapture(enter, params, emu = false) {
+  const scene = params.get('capture') || params.get('emu'), W = +(params.get('w') || 1920), H = +(params.get('h') || 1080);
   const events = [];
   let clockNow = () => 0;          // film time: frames recorded so far, not simulated time (a scene may fast-forward without recording)
-  const opts = { size: [W, H], onSound: (name, at) => events.push({ name, t: +clockNow(at).toFixed(3) }) };
+  let quiet = false;
+  const opts = { size: [W, H], onSound: (name, at) => { if (!quiet) events.push({ name, t: +clockNow(at).toFixed(3) }); } };
   if (params.get('own')) { /* a script arrives through the link as usual */ }
-  const room = await enter(opts, { sim: true, fov: +(params.get('fov') || 64) }), S = room.S, c = room.renderer.domElement;
+  let dev = null, frameDone = null;
+  if (emu) {
+    const iwer = await import('../shots/iwer.module.js');
+    dev = new iwer.XRDevice(iwer.metaQuest3, { stereoEnabled: false }); dev.installRuntime({ forceInstall: true }); dev.primaryInputMode = 'hand';
+    dev.position.set(0, 1.2, 0); try { dev.fovy = +(params.get('fov') || 64) * Math.PI / 180; } catch (e) { console.log('CAPTURE fovy ' + e); }
+    opts.clock = () => t; opts.onFrame = () => { if (frameDone) { const f = frameDone; frameDone = null; f(); } };
+    const mode = params.get('room') === 'mine' ? 'immersive-ar' : 'immersive-vr';
+    opts.session = await navigator.xr.requestSession(mode, { optionalFeatures: ['hand-tracking', 'local-floor'] });
+    console.log('CAPTURE emulator session ' + mode);
+  }
+  const room = await enter(opts, emu ? { session: opts.session, fov: 64 } : { sim: true, fov: +(params.get('fov') || 64) }), S = room.S, c = room.renderer.domElement;
   if (room.world.mr) {       // no camera in a simulator: a photograph of a real room stands in for passthrough
     const tex = await new THREE.TextureLoader().loadAsync('./shots/room.jpg'); tex.colorSpace = THREE.SRGBColorSpace;
     room.world.backdrop(tex, +(params.get('turn') || 0));
-    const drop = +(params.get('drop') || 0); room.world.people.forEach((p) => { p.y0 -= drop; });      // the photograph was taken from standing height: put the people on its floor
+    room.world.dropPeople(+(params.get('drop') || 0));      // the photograph was taken from standing height: put the people on its floor
   }
   const post = (path, body, type) => fetch(`${SERVER}/${scene}/${path}`, { method: 'POST', body, headers: type ? { 'Content-Type': type } : {} });
 
@@ -58,31 +70,38 @@ export async function runCapture(enter, params) {
   clockNow = (at) => frame / FPS + Math.max(0, (at ?? t) - t);
   const aim = { pitch: -3, yaw: 0 }, cur = { pitch: -3, yaw: 0 };
   const hand = { right: { lift: 0, liftTo: 0, pinch: 0, pinchTo: 0, down: false }, left: { lift: 0, liftTo: 0, pinch: 0, pinchTo: 0, down: false } };
-  const REST = { right: new THREE.Vector3(0.21, 0.80, -0.36), left: new THREE.Vector3(-0.21, 0.80, -0.36) }, UP = { right: new THREE.Vector3(0.27, 0.90, -0.40), left: new THREE.Vector3(-0.27, 0.90, -0.40) };   // raised, but to the sides of the monitor so they never cover the line
+  const REST = { right: new THREE.Vector3(0.21, 0.80, -0.36), left: new THREE.Vector3(-0.21, 0.80, -0.36) }, UP = { right: new THREE.Vector3(0.21, 1.0, -0.45), left: new THREE.Vector3(-0.21, 1.0, -0.45) };   // raised, but to the sides of the monitor so they never cover the line
   const eul = new THREE.Euler(), quat = new THREE.Quaternion(), wrist = new THREE.Vector3();
+  const hq = new THREE.Quaternion(), he = new THREE.Euler();
   async function tick() {
     const dt = 1 / FPS; t += dt;
     const k = 1 - Math.exp(-dt * 6.5);                       // the head eases toward where it is aimed
     cur.pitch += (aim.pitch - cur.pitch) * k; cur.yaw += (aim.yaw - cur.yaw) * k;
-    room.look.pitch = cur.pitch + 0.35 * Math.sin(t * 1.7 + 2) + 0.15 * Math.sin(t * 3.7);          // nobody holds their head perfectly still
-    room.look.yaw = cur.yaw + 0.4 * Math.sin(t * 1.3) + 0.2 * Math.sin(t * 2.9 + 1);
-    room.look.roll = 0.5 * Math.sin(t * 0.9 + 0.4); room.look.x = 0.004 * Math.sin(t * 1.1); room.look.y = 0.003 * Math.sin(t * 2.3);
+    const pitch = cur.pitch + 0.35 * Math.sin(t * 1.7 + 2) + 0.15 * Math.sin(t * 3.7), yaw = cur.yaw + 0.4 * Math.sin(t * 1.3) + 0.2 * Math.sin(t * 2.9 + 1);      // nobody holds their head perfectly still
+    const roll = 0.5 * Math.sin(t * 0.9 + 0.4), hx = 0.004 * Math.sin(t * 1.1), hy = 0.003 * Math.sin(t * 2.3);
+    if (emu) { he.set(pitch * deg, -yaw * deg, roll * deg, 'YXZ'); hq.setFromEuler(he); dev.position.set(hx, 1.2 + hy, 0); dev.quaternion.set(hq.x, hq.y, hq.z, hq.w); }
+    else { room.look.pitch = pitch; room.look.yaw = yaw; room.look.roll = roll; room.look.x = hx; room.look.y = hy; }
     for (const side of ['right', 'left']) {
       const h = hand[side], m = side === 'left' ? -1 : 1;
       h.lift += (h.liftTo - h.lift) * (1 - Math.exp(-dt * 9)); h.pinch += (h.pinchTo - h.pinch) * (1 - Math.exp(-dt * 26));
-      if (!h.down && h.pinchTo === 1 && h.pinch > 0.86) { h.down = true; room.world.flash(side); room.pinches.press(side, t); }
-      if (h.down && h.pinchTo === 0 && h.pinch < 0.5) { h.down = false; room.pinches.release(side, t); }
       wrist.copy(REST[side]).lerp(UP[side], h.lift); wrist.x += 0.004 * Math.sin(t * 1.9 + m); wrist.y += 0.003 * Math.sin(t * 2.4 + m * 2);
       eul.set((26 + 16 * h.lift) * deg, m * 20 * deg, -m * (38 - 10 * h.lift) * deg, 'YXZ'); quat.setFromEuler(eul);
-      room.world.hand(side, handJoints(side, wrist, quat, h.pinch, 0.42 + 0.12 * h.pinch)); S.lostSince[side] = null;
+      if (emu) {              // the emulated hand: the runtime owns the joints and fires the pinch as a real select event
+        const eh = dev.hands[side]; eh.position.set(wrist.x, wrist.y, wrist.z); eh.quaternion.set(quat.x, quat.y, quat.z, quat.w); eh.updatePinchValue(Math.max(0, Math.min(1, h.pinch)));
+      } else {
+        if (!h.down && h.pinchTo === 1 && h.pinch > 0.86) { h.down = true; room.world.flash(side); room.pinches.press(side, t); }
+        if (h.down && h.pinchTo === 0 && h.pinch < 0.5) { h.down = false; room.pinches.release(side, t); }
+        room.world.hand(side, handJoints(side, wrist, quat, h.pinch, 0.42 + 0.12 * h.pinch)); S.lostSince[side] = null;
+      }
     }
-    room.step(t); room.render();
+    if (emu) await new Promise((res) => { frameDone = res; });          // the app's own XR frame loop renders this frame
+    else { room.step(t); room.render(); }
     const blob = await new Promise((res) => c.toBlob(res, 'image/jpeg', 0.93));
     await post(`f_${String(++frame).padStart(5, '0')}.jpg`, blob, 'image/jpeg');
   }
   const run = async (sec) => { const n = Math.round(sec * FPS); for (let i = 0; i < n; i++) await tick(); };
   const look = (pitch, yaw = 0) => { aim.pitch = pitch; aim.yaw = yaw; };
-  async function pinch(side = 'right', held = 0.12) { const h = hand[side]; h.liftTo = 1; await run(0.28); h.pinchTo = 1; await run(0.16 + held); h.pinchTo = 0; await run(0.22); h.liftTo = 0.35; }
+  async function pinch(side = 'right', held = 0.14) { const h = hand[side]; h.liftTo = 1; await run(0.5); h.pinchTo = 1; await run(0.2 + held); h.pinchTo = 0; await run(0.35); h.liftTo = 0.45; }   // the hand comes up into the frame, pinches, and settles
   async function holdStart(side = 'left') { const h = hand[side]; h.liftTo = 1; await run(0.3); h.pinchTo = 1; }
   async function holdEnd(side = 'left') { const h = hand[side]; h.pinchTo = 0; await run(0.25); h.liftTo = 0; }
   const DOWN = -21, ROOM = -3;
@@ -93,6 +112,19 @@ export async function runCapture(enter, params) {
 
   // ---------- the scenes ----------
   const SCENES = {
+    // emulator smoke test: centre with a pinch, pass two try-out lines, pinch with the other hand
+    async emutest() { look(ROOM, 0); await run(1.0); console.log('CAPTURE state ' + S.kind + ' canvas ' + c.width + 'x' + c.height); await pinch('right'); await run(0.6); console.log('CAPTURE state ' + S.kind + ' demo ' + !!(S.run && S.run.demo)); await say(2.5, 0, 1.2); console.log('CAPTURE line ' + (S.run ? S.run.index : -1) + ' head ' + (S.run ? S.run.head : '')); await pinch('left', 0.02); await run(0.6); console.log('CAPTURE after back ' + (S.run ? S.run.index : -1)); await run(0.5); },
+    // a short look around, to check how the stand-in room sits behind the app
+    async roomtest() { room.data.seen.try4 = 1; room.act('next'); await run(0.2); S.menu.focus = 1; room.act('next'); look(ROOM, 0); await run(1.6); look(ROOM, -20); await run(1.2); look(DOWN, 0); await run(1.2); },
+    // a few frames with the hands up, to check how they are drawn
+    async hands() { look(-14, 0); hand.right.liftTo = 1; hand.left.liftTo = 1; await run(0.8); hand.right.pinchTo = 1; await run(0.5); },
+    // the first seconds of the film: already seated, a line on the monitor, the head comes up, the room answers
+    async open() {
+      room.data.seen.try4 = 1; room.act('next'); cur.pitch = DOWN; look(DOWN, 0); for (let k = 0; k < 6; k++) { t += 1 / FPS; room.step(t); } S.menu.focus = 1; room.act('next'); frame = 0; hand.right.liftTo = 0.45;
+      mark('read'); await run(2.4); mark('up'); look(ROOM, 4); await run(4.8); mark('pinch'); await pinch('right'); await run(0.9);
+      mark('left'); await say(4.4, -19, 1.2); mark('right'); await say(5.4, 17, 1.2);
+      mark('down'); look(DOWN, 0); await run(3.0); mark('upagain'); look(ROOM, -3); await run(4.6); await pinch('right'); await run(0.9);
+    },
     // a short look around, to check how the stand-in room sits behind the app
     async roomtest() { room.data.seen.try4 = 1; room.act('next'); await run(0.2); S.menu.focus = 1; room.act('next'); look(ROOM, 0); await run(1.6); look(ROOM, -20); await run(1.2); look(DOWN, 0); await run(1.2); },
     // a few frames with the hands up, to check how they are drawn
@@ -138,16 +170,17 @@ export async function runCapture(enter, params) {
     },
     // the clock running out, the last lines, the house, the notes sheet, and choosing to run the weak lines
     async curtain() {
-      room.data.seen.try4 = 1; const sc = room.scripts[1]; sc.target = 58;
+      room.data.seen.try4 = 1;
       room.act('next'); await run(0.2); S.menu.focus = 1; room.act('next'); look(ROOM, 0); await run(0.3);
       const yaws = [0, -14, 14, 0, -13, 15, 0, 13, -15, 0, 14, 0, -13, 12, 0];
-      for (let i = 0; i < 15; i++) {            // fast-forward through most of the run without recording
+      quiet = true;
+      for (let i = 0; i < 15; i++) {            // most of the run goes by off camera (the film cuts to its last minute); its sounds are not laid on the track
         const r = S.run; if (i === 4) { r.peek(true); for (let k = 0; k < 30; k++) { t += 1 / 30; room.look.pitch = ROOM; room.step(t); } r.peek(false); }
         const up = r.minUp(r.index) + 0.3, looks = i === 9 ? 2 : 1;
         for (let L = 0; L < looks; L++) { for (let k = 0; k < 24; k++) { t += 1 / 30; room.look.pitch = DOWN; room.look.yaw = 0; room.step(t); } for (let k = 0; k < Math.round((L === looks - 1 ? up : 1.2) * 30); k++) { t += 1 / 30; room.look.pitch = ROOM; room.look.yaw = yaws[i]; room.step(t); } }
         room.act('next');
       }
-      cur.pitch = ROOM; cur.yaw = 0; look(ROOM, 0); mark('clock'); await run(1.2);
+      quiet = false; cur.pitch = ROOM; cur.yaw = 0; look(ROOM, 0); mark('clock'); await run(1.2);
       await say(3.4, 14, 1.1); await say(3.6, 0, 1.0); mark('last'); look(DOWN, 0); await run(1.0); look(ROOM, 3); await run(3.6); await pinch('right');
       mark('land'); await run(2.1);                    // the last word: stay with one person
       mark('house'); look(ROOM, 12); await run(1.5); look(ROOM, -8); await run(1.6); mark('notes'); look(-2, -14); await run(4.6); mark('result'); look(ROOM, 8); await run(3.2);

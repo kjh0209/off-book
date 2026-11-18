@@ -125,11 +125,12 @@ async function enter(auto = false, extra = {}) {
   if (['panel', 'full', 'mine'].includes(params.get('room'))) settings.room = params.get('room');
   // the session must be asked for inside the click, before anything is awaited
   if (settings.room === 'mine' && xrOK && !arOK) settings.room = 'full';        // no passthrough on this device: the hall instead
-  if (xrOK && !auto && params.get('preview') !== '1') { try { session = await navigator.xr.requestSession(settings.room === 'mine' ? 'immersive-ar' : 'immersive-vr', { optionalFeatures: ['hand-tracking', 'local-floor'] }); } catch { session = null; } }
+  if (extra.session) session = extra.session;
+  else if (xrOK && !auto && params.get('preview') !== '1') { try { session = await navigator.xr.requestSession(settings.room === 'mine' ? 'immersive-ar' : 'immersive-vr', { optionalFeatures: ['hand-tracking', 'local-floor'] }); } catch { session = null; } }
   document.body.classList.add('in-room');
   $('keytext').textContent = session ? '' : matchMedia('(pointer: coarse)').matches ? 'Preview: tap to go on, drag to look, press and hold to see the line, two fingers to pause.' : 'Preview without a headset: Space goes on, hold S to read, drag to look around, Left goes back, hold Down to see the line, P pauses.';
   const { enterRoom } = await mainReady;
-  room = await enterRoom({ canvas: $('stage'), settings, own: parsed.lines.length ? { title: data.own.title, text: data.own.text, target: data.own.target } : null, linkFailed, store, xr: session || false, auto, ...extra,
+  room = await enterRoom({ canvas: $('stage'), settings, own: parsed.lines.length ? { title: data.own.title, text: data.own.text, target: data.own.target } : null, linkFailed, store, auto, ...extra, xr: session || false,
     onLeave: () => { document.body.classList.remove('in-room'); const s = session; session = null; room = null; if (s) s.end().catch(() => {}); data = load(); } });
   return room;
 }
@@ -138,7 +139,7 @@ $('leave').addEventListener('click', () => { if (room) room.S && room.stop(); do
 
 // ---------- start ----------
 (async () => {
-  if (params.get('auto') || params.get('capture')) { try { localStorage.removeItem(KEY); } catch { /* nothing kept */ } data = blank(); }   // a test run starts as a first visit
+  if (params.get('auto') || params.get('capture') || params.get('emu')) { try { localStorage.removeItem(KEY); } catch { /* nothing kept */ } data = blank(); }   // a test run starts as a first visit
   const m = location.hash.match(/[#&]s=([^&]+)/);
   if (m) {
     const st = await unpackState(m[1]);
@@ -148,6 +149,7 @@ $('leave').addEventListener('click', () => { if (room) room.S && room.stop(); do
   }
   parse(); $('text').value = plainText(); $('name').value = data.own.title; renderSettings(); renderLines();
   if (params.get('cards') === '1') showCards();
+  if (params.get('emu')) { const { runCapture } = await import('./capture.js'); runCapture(enter, params, true).catch((e) => console.error('CAPTURE ERROR ' + (e && e.stack || e))); return; }
   if (params.get('capture')) { const { runCapture } = await import('./capture.js'); runCapture(enter, params).catch((e) => console.error('CAPTURE ERROR ' + (e && e.stack || e))); return; }
   if (params.get('auto')) { const { runAuto } = await import('./auto.js'); runAuto(enter, params.get('auto')).catch((e) => console.error('AUTO ERROR ' + (e && e.stack || e))); }
 })();

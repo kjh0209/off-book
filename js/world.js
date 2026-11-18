@@ -97,6 +97,7 @@ export async function buildWorld({ panel = false, textScale = 1, mr = false } = 
   const meta = await (await fetch(panel ? './textures/panel.json' : './textures/people.json')).json();
   const handT = panel ? null : await img('./textures/hand_up.png');
   const poolT = canvasTex(256, 256); poolT.draw(drawPool);
+  const shadowT = canvasTex(128, 128); shadowT.draw((c, w, h) => { const g = c.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2); g.addColorStop(0, 'rgba(0,0,0,0.62)'); g.addColorStop(0.6, 'rgba(0,0,0,0.28)'); g.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = g; c.fillRect(0, 0, w, h); });
   const people = [], blocks = [];
   let seat = 0, asker = null, mrSeat = 0;
   const MR_SLOTS = [-27, -18, -4.5, 4.5, 13.5, 22.5, 31.5].map((v) => v - 2.25);   // degrees: two on the left, three in the middle, two on the right
@@ -111,9 +112,9 @@ export async function buildWorld({ panel = false, textScale = 1, mr = false } = 
       }
       for (let k = 0; k < n; k++) {
         if (panel && !(ri === 0 && k === 0)) { seat++; continue; }
-        if (mr && !panel && ri === 2) { seat++; continue; }                 // my room: the front two rows only, as one arc of five
+        if (mr && !panel && ri !== (bi === 1 ? 1 : 0)) { seat++; continue; }     // my room: seven people in one arc (two, three, two), one to a seat
         let pos = panel ? new THREE.Vector3((bi - 1) * 0.78, 0, -3.3) : dir.clone().multiplyScalar(d).add(right.clone().multiplyScalar((k - (n - 1) / 2) * seatGap));
-        if (mr && !panel) { const a = (yaw + (ri === 0 ? (k - 0.5) * 7 : (k - 1) * 7) * (ri === 0 ? 1 : 0.0)) * deg; const slot = MR_SLOTS[mrSeat++ % MR_SLOTS.length]; pos = new THREE.Vector3(Math.sin(slot * deg) * 3.1, 0, -Math.cos(slot * deg) * 3.1); void a; }
+        if (mr && !panel) { const a = (yaw + (ri === 0 ? (k - 0.5) * 7 : (k - 1) * 7) * (ri === 0 ? 1 : 0.0)) * deg; const slot = MR_SLOTS[mrSeat++ % MR_SLOTS.length]; pos = new THREE.Vector3(Math.sin(slot * deg) * 2.7, 0, -Math.cos(slot * deg) * 2.7); void a; }
         const i = panel ? bi : seat % meta.count, flip = !panel && seat >= meta.count;
         const map = peopleT.clone(); map.repeat.set((flip ? -1 : 1) / meta.cols, 1 / meta.rows);
         map.offset.set(((i % meta.cols) + (flip ? 1 : 0)) / meta.cols, 1 - (Math.floor(i / meta.cols) + 1) / meta.rows); map.needsUpdate = true;
@@ -121,7 +122,12 @@ export async function buildWorld({ panel = false, textScale = 1, mr = false } = 
         const m = new THREE.Mesh(new THREE.PlaneGeometry(personH * 0.5, personH), mat);
         const yy = mr ? 0 : y0;
         m.position.copy(pos).setY(yy + personH / 2); m.rotation.y = mr && !panel ? Math.atan2(-pos.x, -pos.z) : panel ? 0 : -yaw * deg; room.add(m);
-        const p = { mesh: m, mat, block: bi, cur: LIGHT.half, target: LIGHT.half, wait: 0, stagger: ((seat * 37) % 16) / 100, y0: yy, phase: (seat * 2.399) % 6.283, nod: 0, focus: 0,
+        let shadow = null;
+        if (mr) {      // a soft patch under each chair: without it a flat figure reads as a sticker on the wall behind
+          shadow = new THREE.Mesh(new THREE.PlaneGeometry(0.86, 0.5), basic({ map: shadowT.t, transparent: true, depthWrite: false, opacity: 0 }));
+          shadow.rotation.x = -Math.PI / 2; shadow.position.set(pos.x, 0.006, pos.z + 0.04); shadow.renderOrder = -1; room.add(shadow);
+        }
+        const p = { mesh: m, mat, shadow, block: bi, cur: LIGHT.half, target: LIGHT.half, wait: 0, stagger: ((seat * 37) % 16) / 100, y0: yy, phase: (seat * 2.399) % 6.283, nod: 0, focus: 0,
           yaw: Math.atan2(pos.x, -pos.z) / deg, pitch: Math.atan2(yy + personH * 0.86 - E, Math.hypot(pos.x, pos.z)) / deg };
         people.push(p);
         if (!panel && !mr && bi === 1 && ri === 0 && k === 1) asker = p;       // front of the centre block, beside the question board
@@ -214,6 +220,7 @@ export async function buildWorld({ panel = false, textScale = 1, mr = false } = 
     // the end: the people you turned to are lit, the others stay half lit
     reached(set) { reachedSet = set; },
     // a stand-in for the real room when there is no passthrough camera (simulator capture): a photograph on a sphere
+    dropPeople(by) { people.forEach((p) => { p.y0 -= by; if (p.shadow) p.shadow.position.y -= by; }); },
     backdrop(texture, turn = 0) { const sky = new THREE.Mesh(new THREE.SphereGeometry(30, 48, 32), basic({ map: texture, side: THREE.BackSide, depthWrite: false })); sky.rotation.y = turn * deg; sky.renderOrder = -10; scene.add(sky); return sky; },
     veil(amount) { veilTarget = amount; },
     setFade(sec) { fadeOutT = sec; },
@@ -257,7 +264,7 @@ export async function buildWorld({ panel = false, textScale = 1, mr = false } = 
         // ease in perception: the multiplier is linear light, so square the ramp position
         const g = p.cur;
         // my room: people are solid whenever the head is up (no ghosts); the ones you face are brighter; they fade away only when you look down
-        if (mr) { const b = g <= LIGHT.dim ? 0.5 : 0.5 + 0.5 * (g - LIGHT.dim) / (LIGHT.lit - LIGHT.dim); p.mat.color.setRGB(b, b * 0.98, b * 0.94); p.mat.opacity = Math.max(0, Math.min(1, (g - LIGHT.out) / (LIGHT.dim - LIGHT.out))); p.mesh.visible = p.mat.opacity > 0.01; }
+        if (mr) { const b = g <= LIGHT.dim ? 0.4 : 0.4 + 0.6 * (g - LIGHT.dim) / (LIGHT.lit - LIGHT.dim); p.mat.color.setRGB(b, b * 0.98, b * 0.94); p.mat.opacity = Math.max(0, Math.min(1, (g - LIGHT.out) / (LIGHT.dim - LIGHT.out))); p.mesh.visible = p.mat.opacity > 0.01; if (p.shadow) { p.shadow.material.opacity = p.mat.opacity; p.shadow.visible = p.mesh.visible; } }
         else p.mat.color.setRGB(g, g * 0.98, g * 0.94);
         // signs of life that a flat sprite can carry: slow breathing, sitting a little taller when lit, a small dip of the head
         const lit = Math.max(0, Math.min(1, (g - LIGHT.dim) / (LIGHT.lit - LIGHT.dim)));
@@ -275,7 +282,7 @@ export async function buildWorld({ panel = false, textScale = 1, mr = false } = 
       });
       const vs = veilTarget > veilCur ? dt / 0.3 : dt / 0.25;
       veilCur = veilTarget > veilCur ? Math.min(veilTarget, veilCur + vs) : Math.max(veilTarget, veilCur - vs);
-      if (mr) { veil.visible = false; const o = 1 - 0.86 * veilCur; for (const m of monMats) m.opacity = o; }
+      if (mr) { veil.visible = false; const o = 1 - 0.97 * veilCur; for (const m of monMats) m.opacity = o; mon.visible = o > 0.04; }
       else { veil.material.opacity = veilCur; veil.visible = veilCur > 0.01; }
     },
   };

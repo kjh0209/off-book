@@ -333,9 +333,11 @@ export async function enterRoom({ canvas, settings, own, linkFailed = false, sto
   let running = true;
   function stop() { running = false; renderer.setAnimationLoop(null); off.forEach((f) => f()); window.removeEventListener('resize', resize); if (ac) ac.close().catch(() => {}); renderer.dispose(); }
   const api = { S, world, renderer, camera, act, step, look, head, data, scripts, reach, stats: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles }), render: () => renderer.render(world.scene, camera), stop, pinches };
-  if (auto) return api;                              // the test drives step() itself
+  if (auto && !xr) return api;                       // the test drives step() itself
   if (xr) { setupXR(xr); }
   const t0 = performance.now();
-  renderer.setAnimationLoop(() => { if (!running) return; if (xr) readHands(); step((performance.now() - t0) / 1000); renderer.render(world.scene, camera); });
+  // auto.clock and auto.onFrame let an emulator capture advance exactly one film frame per XR frame
+  const clock = auto && auto.clock ? auto.clock : () => (performance.now() - t0) / 1000;
+  renderer.setAnimationLoop(() => { if (!running) return; if (xr) readHands(); step(clock()); renderer.render(world.scene, camera); if (auto && auto.onFrame) auto.onFrame(); });
   return api;
 }
