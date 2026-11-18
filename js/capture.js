@@ -70,7 +70,7 @@ export async function runCapture(enter, params, emu = false) {
   clockNow = (at) => frame / FPS + Math.max(0, (at ?? t) - t);
   const aim = { pitch: -3, yaw: 0 }, cur = { pitch: -3, yaw: 0 };
   const hand = { right: { lift: 0, liftTo: 0, pinch: 0, pinchTo: 0, down: false }, left: { lift: 0, liftTo: 0, pinch: 0, pinchTo: 0, down: false } };
-  const REST = { right: new THREE.Vector3(0.21, 0.80, -0.36), left: new THREE.Vector3(-0.21, 0.80, -0.36) }, UP = { right: new THREE.Vector3(0.21, 1.0, -0.45), left: new THREE.Vector3(-0.21, 1.0, -0.45) };   // raised, but to the sides of the monitor so they never cover the line
+  const REST = { right: new THREE.Vector3(0.3, 0.76, -0.33), left: new THREE.Vector3(-0.3, 0.76, -0.33) }, UP = { right: new THREE.Vector3(0.21, 1.0, -0.45), left: new THREE.Vector3(-0.21, 1.0, -0.45) };   // raised, but to the sides of the monitor so they never cover the line
   const eul = new THREE.Euler(), quat = new THREE.Quaternion(), wrist = new THREE.Vector3();
   const hq = new THREE.Quaternion(), he = new THREE.Euler();
   async function tick() {
@@ -102,7 +102,7 @@ export async function runCapture(enter, params, emu = false) {
   const run = async (sec) => { const n = Math.round(sec * FPS); for (let i = 0; i < n; i++) await tick(); };
   const look = (pitch, yaw = 0) => { aim.pitch = pitch; aim.yaw = yaw; };
   async function pinch(side = 'right', held = 0.14) { const h = hand[side]; h.liftTo = 1; await run(0.5); h.pinchTo = 1; await run(0.2 + held); h.pinchTo = 0; await run(0.35); h.liftTo = 0.45; }   // the hand comes up into the frame, pinches, and settles
-  async function holdStart(side = 'left') { const h = hand[side]; h.liftTo = 1; await run(0.3); h.pinchTo = 1; }
+  async function holdStart(side = 'left') { const h = hand[side]; h.liftTo = 0.5; await run(0.4); h.pinchTo = 1; }       // held low and to the side, clear of the line it brings back
   async function holdEnd(side = 'left') { const h = hand[side]; h.pinchTo = 0; await run(0.25); h.liftTo = 0; }
   const DOWN = -21, ROOM = -3;
   // read the line, look up at a part of the room, say it (secs of "speaking"), pinch on

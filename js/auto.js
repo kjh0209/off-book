@@ -48,6 +48,12 @@ export async function runAuto(enter, mode) {
     console.log(`AUTO DONE ${checks.length - failed.length}/${checks.length}` + (failed.length ? ' FAILED: ' + failed.join(' | ') : ''));
     return;
   }
+  if (mode === 'minedown') {       // my room: look up at the middle, pass a line, look down, and report every person's state
+    const dump = (tag) => console.log('MINE ' + tag + ' ' + room.world.people.map((p) => `${p.cur.toFixed(2)}/${p.mat.opacity.toFixed(2)}/${p.mesh.visible ? 'v' : '-'}/${p.focus}`).join(' '));
+    room.data.seen.try4 = 1; adv(0.3); room.act('next'); adv(0.3); S.menu.focus = 1; room.act('next'); adv(0.5, -21); adv(3, -3, 2); dump('up');
+    room.act('next'); adv(0.3, -3, 2); adv(2.5, -21, 0); dump('down'); adv(3, -3, 2); room.act('next'); adv(2.5, -21, 0); dump('down2');
+    for (let i = 0; i < 6; i++) { adv(0.8, -21, 0); adv(4.5, -3, i % 2 ? 12 : -12); room.act('next'); } adv(2.5, -21, 0); dump('down3'); return;
+  }
   adv(0.5);
   ok('opens on the centring message', S.kind === 'centre');
   room.act('next'); adv(0.3);
