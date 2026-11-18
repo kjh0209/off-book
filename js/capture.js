@@ -42,7 +42,8 @@ function handJoints(side, wrist, quat, pinch = 0, curl = 0.35) {
 export async function runCapture(enter, params) {
   const scene = params.get('capture'), W = +(params.get('w') || 1920), H = +(params.get('h') || 1080);
   const events = [];
-  const opts = { size: [W, H], onSound: (name, at) => events.push({ name, t: +at.toFixed(3) }) };
+  let clockNow = () => 0;          // film time: frames recorded so far, not simulated time (a scene may fast-forward without recording)
+  const opts = { size: [W, H], onSound: (name, at) => events.push({ name, t: +clockNow(at).toFixed(3) }) };
   if (params.get('own')) { /* a script arrives through the link as usual */ }
   const room = await enter(opts, { sim: true, fov: +(params.get('fov') || 64) }), S = room.S, c = room.renderer.domElement;
   if (room.world.mr) {       // no camera in a simulator: a photograph of a real room stands in for passthrough
@@ -54,6 +55,7 @@ export async function runCapture(enter, params) {
 
   // ---------- the performer ----------
   let t = 0, frame = 0;
+  clockNow = (at) => frame / FPS + Math.max(0, (at ?? t) - t);
   const aim = { pitch: -3, yaw: 0 }, cur = { pitch: -3, yaw: 0 };
   const hand = { right: { lift: 0, liftTo: 0, pinch: 0, pinchTo: 0, down: false }, left: { lift: 0, liftTo: 0, pinch: 0, pinchTo: 0, down: false } };
   const REST = { right: new THREE.Vector3(0.21, 0.80, -0.36), left: new THREE.Vector3(-0.21, 0.80, -0.36) }, UP = { right: new THREE.Vector3(0.27, 0.90, -0.40), left: new THREE.Vector3(-0.27, 0.90, -0.40) };   // raised, but to the sides of the monitor so they never cover the line
@@ -86,7 +88,7 @@ export async function runCapture(enter, params) {
   const DOWN = -21, ROOM = -3;
   // read the line, look up at a part of the room, say it (secs of "speaking"), pinch on
   async function say(secs, yaw = 0, readFor = 1.0) { look(DOWN, 0); await run(readFor); look(ROOM, yaw); await run(secs); await pinch('right'); await run(0.25); }
-  const mark = (name) => events.push({ name: 'mark:' + name, t: +t.toFixed(3) });
+  const mark = (name) => events.push({ name: 'mark:' + name, t: +(frame / FPS).toFixed(3) });
   const menuGo = async (index) => { look(-17, 0); await run(0.6); while (S.menu && S.menu.focus !== index) { await pinch('left'); await run(0.2); } await run(0.3); await pinch('right'); await run(0.4); };
 
   // ---------- the scenes ----------
@@ -138,7 +140,7 @@ export async function runCapture(enter, params) {
     async curtain() {
       room.data.seen.try4 = 1; const sc = room.scripts[1]; sc.target = 58;
       room.act('next'); await run(0.2); S.menu.focus = 1; room.act('next'); look(ROOM, 0); await run(0.3);
-      const yaws = [0, 12, 14, 0, -4, 15, 0, 13, 12, 0, 14, 0, 15, 12, 0];
+      const yaws = [0, -14, 14, 0, -13, 15, 0, 13, -15, 0, 14, 0, -13, 12, 0];
       for (let i = 0; i < 15; i++) {            // fast-forward through most of the run without recording
         const r = S.run; if (i === 4) { r.peek(true); for (let k = 0; k < 30; k++) { t += 1 / 30; room.look.pitch = ROOM; room.step(t); } r.peek(false); }
         const up = r.minUp(r.index) + 0.3, looks = i === 9 ? 2 : 1;
@@ -179,7 +181,7 @@ export async function runCapture(enter, params) {
   if (!SCENES[scene]) { console.log('CAPTURE unknown scene ' + scene); await post('done.json', JSON.stringify({ error: 'unknown' })); return; }
   await run(0.2); frame = 0; events.length = 0; const t0 = t;        // settle, then start counting
   await SCENES[scene]();
-  await post('events.json', JSON.stringify({ fps: FPS, frames: frame, w: W, h: H, events: events.map((e) => ({ ...e, t: +(e.t - t0).toFixed(3) })) }));
+  void t0; await post('events.json', JSON.stringify({ fps: FPS, frames: frame, w: W, h: H, events }));
   await post('done.json', JSON.stringify({ frames: frame }));
   console.log(`CAPTURE DONE ${scene} ${frame} frames`);
 }
