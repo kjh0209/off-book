@@ -41,7 +41,8 @@ function drawRail(ctx, w, h, { total = 0, lit = new Set(), anchors = new Set(), 
   }
 }
 
-export async function buildWorld({ panel = false, textScale = 1 } = {}) {
+// mr: "my room". Nothing of the hall is drawn; the monitor, the clock and seven people stand in the user's own room (passthrough).
+export async function buildWorld({ panel = false, textScale = 1, mr = false } = {}) {
   await Promise.all(['500 80px "Atkinson Hyperlegible Next"', '400 40px "Atkinson Hyperlegible Next"', '600 40px "Atkinson Hyperlegible Next"',
     '400 40px "Atkinson Hyperlegible Mono"', '500 40px "Atkinson Hyperlegible Mono"'].map((f) => document.fonts.load(f)));
   const loader = new THREE.TextureLoader();
@@ -49,27 +50,28 @@ export async function buildWorld({ panel = false, textScale = 1 } = {}) {
 
   const scene = new THREE.Scene();
   const room = new THREE.Group(); scene.add(room);        // everything that belongs to the room; moved as one when the user is centred
+  const shell = new THREE.Group(); room.add(shell); shell.visible = !mr;   // floor, walls, table, risers, lamps: the hall itself
   const E = layout.eyeHeight;
 
   // ---------- room ----------
   const floorT = canvasTex(1024, 1024, { repeat: [4, 4], read: true }); floorT.draw((c, w) => drawFloor(c, w));
   const wallT = canvasTex(1024, 1024, { repeat: [5, 2], read: true }); wallT.draw((c, w) => drawWall(c, w));
   const tableT = canvasTex(1024, 1024, { repeat: [2, 1], read: true }); tableT.draw((c, w) => drawTable(c, w));
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(14, 14), basic({ map: floorT.t })); floor.rotation.x = -Math.PI / 2; floor.position.z = -1; room.add(floor);
-  const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(14, 14), basic({ color: 0x0b0a09 })); ceiling.rotation.x = Math.PI / 2; ceiling.position.set(0, 4.2, -1); room.add(ceiling);
-  const back = new THREE.Mesh(new THREE.PlaneGeometry(14, 4.2), basic({ map: wallT.t, color: 0xe6e0d6 })); back.position.set(0, 2.1, -7.6); room.add(back);
-  const behind = new THREE.Mesh(new THREE.PlaneGeometry(14, 4.2), basic({ map: wallT.t, color: 0x8f8a82 })); behind.position.set(0, 2.1, 5.6); behind.rotation.y = Math.PI; room.add(behind);
-  const skirting = new THREE.Mesh(new THREE.BoxGeometry(14, 0.12, 0.02), basic({ color: 0x1b1815 })); skirting.position.set(0, 0.06, -7.58); room.add(skirting);
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(14, 14), basic({ map: floorT.t })); floor.rotation.x = -Math.PI / 2; floor.position.z = -1; shell.add(floor);
+  const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(14, 14), basic({ color: 0x0b0a09 })); ceiling.rotation.x = Math.PI / 2; ceiling.position.set(0, 4.2, -1); shell.add(ceiling);
+  const back = new THREE.Mesh(new THREE.PlaneGeometry(14, 4.2), basic({ map: wallT.t, color: 0xe6e0d6 })); back.position.set(0, 2.1, -7.6); shell.add(back);
+  const behind = new THREE.Mesh(new THREE.PlaneGeometry(14, 4.2), basic({ map: wallT.t, color: 0x8f8a82 })); behind.position.set(0, 2.1, 5.6); behind.rotation.y = Math.PI; shell.add(behind);
+  const skirting = new THREE.Mesh(new THREE.BoxGeometry(14, 0.12, 0.02), basic({ color: 0x1b1815 })); skirting.position.set(0, 0.06, -7.58); shell.add(skirting);
   for (const sx of [-1, 1]) {
     const side = new THREE.Mesh(new THREE.PlaneGeometry(14, 4.2), basic({ map: wallT.t, color: 0xb4aea4 }));
-    side.position.set(sx * 5.6, 2.1, -1); side.rotation.y = -sx * Math.PI / 2; room.add(side);
+    side.position.set(sx * 5.6, 2.1, -1); side.rotation.y = -sx * Math.PI / 2; shell.add(side);
   }
   const table = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.04, 1.15), basic({ map: tableT.t, color: new THREE.Color(2.0, 1.9, 1.8) }));
-  table.position.set(0, layout.tableHeight - 0.02, -0.95); room.add(table);
-  const apron = new THREE.Mesh(new THREE.BoxGeometry(1.44, 0.1, 1.09), basic({ color: 0x0f0d0b })); apron.position.set(0, layout.tableHeight - 0.09, -0.95); room.add(apron);
+  table.position.set(0, layout.tableHeight - 0.02, -0.95); shell.add(table);
+  const apron = new THREE.Mesh(new THREE.BoxGeometry(1.44, 0.1, 1.09), basic({ color: 0x0f0d0b })); apron.position.set(0, layout.tableHeight - 0.09, -0.95); shell.add(apron);
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
     const leg = new THREE.Mesh(new THREE.BoxGeometry(0.05, layout.tableHeight - 0.04, 0.05), basic({ color: 0x0f0d0b }));
-    leg.position.set(sx * 0.69, (layout.tableHeight - 0.04) / 2, -0.95 + sz * 0.52); room.add(leg);
+    leg.position.set(sx * 0.69, (layout.tableHeight - 0.04) / 2, -0.95 + sz * 0.52); shell.add(leg);
   }
 
   // ---------- monitor ----------
@@ -84,6 +86,11 @@ export async function buildWorld({ panel = false, textScale = 1 } = {}) {
   // the veil that fades the words while the head is up
   const veil = new THREE.Mesh(new THREE.PlaneGeometry(mw, mh), basic({ color: color.n1, transparent: true, opacity: 0, depthWrite: false })); veil.position.z = 0.0015; veil.visible = false; mon.add(veil);
 
+  // my room: the monitor has no table to stand on, so it is a thin panel, and it fades back while the head is up
+  // (in the hall the words are veiled; here the whole panel steps aside so it does not stand between you and the people)
+  const monMats = [housing.material, body.material, screen.material, rail.material];
+  if (mr) { body.visible = false; for (const m of monMats) { m.transparent = true; m.depthWrite = false; } }
+
   // ---------- audience ----------
   const A = layout.audience, personH = 1.3, firstRow = 4.6, rowDepth = 0.85, riserH = 0.25, seatGap = 0.66;
   const peopleT = await img(panel ? './textures/panel.png' : './textures/people.png');
@@ -91,7 +98,8 @@ export async function buildWorld({ panel = false, textScale = 1 } = {}) {
   const handT = panel ? null : await img('./textures/hand_up.png');
   const poolT = canvasTex(256, 256); poolT.draw(drawPool);
   const people = [], blocks = [];
-  let seat = 0, asker = null;
+  let seat = 0, asker = null, mrSeat = 0;
+  const MR_SLOTS = [-27, -18, -4.5, 4.5, 13.5, 22.5, 31.5].map((v) => v - 2.25);   // degrees: two on the left, three in the middle, two on the right
   A.blockYaw.forEach((yaw, bi) => {
     const dir = new THREE.Vector3(Math.sin(yaw * deg), 0, -Math.cos(yaw * deg)), right = new THREE.Vector3(Math.cos(yaw * deg), 0, Math.sin(yaw * deg));
     const block = { level: LIGHT.half, risers: [], bulb: null, shade: null, pool: null, wash: null };
@@ -99,31 +107,35 @@ export async function buildWorld({ panel = false, textScale = 1 } = {}) {
       const d = firstRow + ri * rowDepth, y0 = ri * riserH;
       if (ri > 0 && !panel) {
         const riser = new THREE.Mesh(new THREE.BoxGeometry(2.25, riserH * ri, rowDepth), basic({ color: 0x100d0b }));
-        riser.position.copy(dir.clone().multiplyScalar(d)).setY(riserH * ri / 2); riser.rotation.y = -yaw * deg; room.add(riser); block.risers.push(riser);
+        riser.position.copy(dir.clone().multiplyScalar(d)).setY(riserH * ri / 2); riser.rotation.y = -yaw * deg; shell.add(riser); block.risers.push(riser);
       }
       for (let k = 0; k < n; k++) {
         if (panel && !(ri === 0 && k === 0)) { seat++; continue; }
-        const pos = panel ? new THREE.Vector3((bi - 1) * 0.78, 0, -3.3) : dir.clone().multiplyScalar(d).add(right.clone().multiplyScalar((k - (n - 1) / 2) * seatGap));
+        if (mr && !panel && ri === 2) { seat++; continue; }                 // my room: the front two rows only, as one arc of five
+        let pos = panel ? new THREE.Vector3((bi - 1) * 0.78, 0, -3.3) : dir.clone().multiplyScalar(d).add(right.clone().multiplyScalar((k - (n - 1) / 2) * seatGap));
+        if (mr && !panel) { const a = (yaw + (ri === 0 ? (k - 0.5) * 7 : (k - 1) * 7) * (ri === 0 ? 1 : 0.0)) * deg; const slot = MR_SLOTS[mrSeat++ % MR_SLOTS.length]; pos = new THREE.Vector3(Math.sin(slot * deg) * 3.1, 0, -Math.cos(slot * deg) * 3.1); void a; }
         const i = panel ? bi : seat % meta.count, flip = !panel && seat >= meta.count;
         const map = peopleT.clone(); map.repeat.set((flip ? -1 : 1) / meta.cols, 1 / meta.rows);
         map.offset.set(((i % meta.cols) + (flip ? 1 : 0)) / meta.cols, 1 - (Math.floor(i / meta.cols) + 1) / meta.rows); map.needsUpdate = true;
-        const mat = basic({ map, transparent: true, alphaTest: 0.5 });
+        const mat = basic({ map, transparent: true, alphaTest: mr ? 0.02 : 0.5, depthWrite: !mr });
         const m = new THREE.Mesh(new THREE.PlaneGeometry(personH * 0.5, personH), mat);
-        m.position.copy(pos).setY(y0 + personH / 2); m.rotation.y = panel ? 0 : -yaw * deg; room.add(m);
-        const p = { mesh: m, mat, block: bi, cur: LIGHT.half, target: LIGHT.half, wait: 0, stagger: ((seat * 37) % 16) / 100, y0, phase: (seat * 2.399) % 6.283, nod: 0 };
+        const yy = mr ? 0 : y0;
+        m.position.copy(pos).setY(yy + personH / 2); m.rotation.y = mr && !panel ? Math.atan2(-pos.x, -pos.z) : panel ? 0 : -yaw * deg; room.add(m);
+        const p = { mesh: m, mat, block: bi, cur: LIGHT.half, target: LIGHT.half, wait: 0, stagger: ((seat * 37) % 16) / 100, y0: yy, phase: (seat * 2.399) % 6.283, nod: 0, focus: 0,
+          yaw: Math.atan2(pos.x, -pos.z) / deg, pitch: Math.atan2(yy + personH * 0.86 - E, Math.hypot(pos.x, pos.z)) / deg };
         people.push(p);
-        if (!panel && bi === 1 && ri === 0 && k === 1) asker = p;       // front of the centre block, beside the question board
+        if (!panel && !mr && bi === 1 && ri === 0 && k === 1) asker = p;       // front of the centre block, beside the question board
         seat++;
       }
     });
     const c = dir.clone().multiplyScalar(firstRow + rowDepth);
-    block.shade = new THREE.Mesh(new THREE.ConeGeometry(0.24, 0.16, 20, 1, true), basic({ color: 0x141210, side: THREE.DoubleSide })); block.shade.position.set(c.x, 2.92, c.z); room.add(block.shade);
-    block.bulb = new THREE.Mesh(new THREE.CircleGeometry(0.17, 20), basic({ color: 0x2a2018 })); block.bulb.rotation.x = Math.PI / 2; block.bulb.position.set(c.x, 2.845, c.z); room.add(block.bulb);
-    const cord = new THREE.Mesh(new THREE.BoxGeometry(0.012, 1.2, 0.012), basic({ color: 0x1b1815 })); cord.position.set(c.x, 3.6, c.z); room.add(cord);
+    block.shade = new THREE.Mesh(new THREE.ConeGeometry(0.24, 0.16, 20, 1, true), basic({ color: 0x141210, side: THREE.DoubleSide })); block.shade.position.set(c.x, 2.92, c.z); shell.add(block.shade);
+    block.bulb = new THREE.Mesh(new THREE.CircleGeometry(0.17, 20), basic({ color: 0x2a2018 })); block.bulb.rotation.x = Math.PI / 2; block.bulb.position.set(c.x, 2.845, c.z); shell.add(block.bulb);
+    const cord = new THREE.Mesh(new THREE.BoxGeometry(0.012, 1.2, 0.012), basic({ color: 0x1b1815 })); cord.position.set(c.x, 3.6, c.z); shell.add(cord);
     block.pool = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 2.8), basic({ map: poolT.t, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0 }));
-    block.pool.rotation.x = -Math.PI / 2; block.pool.rotation.z = yaw * deg; block.pool.position.set(c.x - dir.x * 1.1, 0.004, c.z - dir.z * 1.1); room.add(block.pool);
+    block.pool.rotation.x = -Math.PI / 2; block.pool.rotation.z = yaw * deg; block.pool.position.set(c.x - dir.x * 1.1, 0.004, c.z - dir.z * 1.1); shell.add(block.pool);
     block.wash = new THREE.Mesh(new THREE.PlaneGeometry(5, 3.6), basic({ map: poolT.t, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0 }));
-    block.wash.position.set(Math.tan(yaw * deg) * 7.55, 2.0, -7.55); room.add(block.wash);
+    block.wash.position.set(Math.tan(yaw * deg) * 7.55, 2.0, -7.55); shell.add(block.wash);
     blocks.push(block);
   });
   if (panel) {
@@ -143,6 +155,7 @@ export async function buildWorld({ panel = false, textScale = 1 } = {}) {
   const clockT = canvasTex(1024, 320);
   const clock = new THREE.Mesh(new THREE.PlaneGeometry(cw, ch), basic({ map: clockT.t }));
   clock.position.set(0, E + layout.clock.distance * Math.tan(layout.clock.aboveEye * deg), -7.58); room.add(clock);
+  if (mr) { clock.scale.setScalar(0.46); clock.position.set(0, E + 3.4 * Math.tan(15 * deg), -3.4); }
   let clockKey = '';
 
   // ---------- boards: notes and question, standing left of centre on a solid base ----------
@@ -179,9 +192,10 @@ export async function buildWorld({ panel = false, textScale = 1 } = {}) {
   }
 
   // ---------- state the app drives ----------
+  let reachedSet = null;
   let lightMode = 'half', lightZone = 1, lightShares = [1, 1, 1], veilTarget = 0, veilCur = 0, fadeOutT = 0.4, lifeT = 0;
   const api = {
-    scene, room, mon, screen, people, blocks, panel,
+    scene, room, mon, screen, people, blocks, panel, mr,
     monitor(state) { screenT.draw((c, w, h) => drawMonitor(c, w, h, state)); },
     rail(state) { railT.draw((c, w, h) => drawRail(c, w, h, state)); },
     clock(state) { const key = `${Math.ceil(Math.abs(state.seconds))}|${state.target}|${state.state}`; if (key === clockKey) return; clockKey = key; clockT.draw((c, w, h) => drawClock(c, w, h, state)); },
@@ -192,8 +206,15 @@ export async function buildWorld({ panel = false, textScale = 1 } = {}) {
     // mode: 'zone' (the block you face), 'out', 'half', 'full', 'ask', or 'shares' (each block as bright as its share of your gaze)
     light(mode, zone = 1) { lightMode = mode; if (Array.isArray(zone)) { const mx = Math.max(1, ...zone); lightShares = zone.map((z) => 0.16 + 0.84 * z / mx); } else lightZone = zone; },
     // a couple of people in a block dip their heads: they heard that line
-    nod(zone) { const mine = people.filter((p) => p.block === zone); for (let k = 0; k < Math.min(2, mine.length); k++) mine[(Math.floor(lifeT * 7) + k * 3) % mine.length].nod = 0.55 + k * 0.12; },
+    nod() {},
     flash(side) { if (hands[side]) hands[side].flash = 0.18; },
+    // weights 0..1 per person: how directly the head points at each
+    focus(weights) { people.forEach((p, i) => { p.focus = weights ? weights[i] || 0 : 0; }); },
+    nodPerson(i) { if (people[i]) people[i].nod = 0.9; },
+    // the end: the people you turned to are lit, the others stay half lit
+    reached(set) { reachedSet = set; },
+    // a stand-in for the real room when there is no passthrough camera (simulator capture): a photograph on a sphere
+    backdrop(texture, turn = 0) { const sky = new THREE.Mesh(new THREE.SphereGeometry(30, 48, 32), basic({ map: texture, side: THREE.BackSide, depthWrite: false })); sky.rotation.y = turn * deg; sky.renderOrder = -10; scene.add(sky); return sky; },
     veil(amount) { veilTarget = amount; },
     setFade(sec) { fadeOutT = sec; },
     // put the room where the user is: their eye at the room's eye point, the room's forward along their gaze
@@ -225,20 +246,24 @@ export async function buildWorld({ panel = false, textScale = 1 } = {}) {
       lifeT += dt;
       for (const side of ['left', 'right']) { const h = hands[side]; if (h.flash > 0) { h.flash -= dt; h.skin.color.copy(h.flash > 0 ? FLASH : SKIN); } }
       for (const p of people) {
-        let target = lightMode === 'full' ? LIGHT.lit : lightMode === 'half' ? LIGHT.half : lightMode === 'out' ? LIGHT.out : lightMode === 'shares' ? lightShares[p.block]
-          : lightMode === 'ask' ? (p === asker ? LIGHT.lit : LIGHT.ask) : (p.block === lightZone ? LIGHT.lit : LIGHT.dim);
+        const pi = people.indexOf(p);
+        let target = lightMode === 'reached' ? (reachedSet && reachedSet.has(pi) ? LIGHT.lit : 0.42) : lightMode === 'full' ? LIGHT.lit : lightMode === 'half' ? LIGHT.half : lightMode === 'out' ? LIGHT.out : lightMode === 'shares' ? lightShares[p.block]
+          : lightMode === 'ask' ? (p === asker ? LIGHT.lit : LIGHT.ask) : (p.block === lightZone ? LIGHT.lit * (0.32 + 0.68 * p.focus) : LIGHT.dim);     // the one you face is the brightest in the block
         if (target !== p.target) { p.wait = target > p.cur ? p.stagger : 0; p.target = target; }
         if (p.wait > 0) { p.wait -= dt; continue; }
         const span = p.target > p.cur ? 0.6 : (lightMode === 'out' ? fadeOutT : 1.2);       // seconds for a full swing; always from the current value
         const step = dt / span;
         p.cur = p.target > p.cur ? Math.min(p.target, p.cur + step) : Math.max(p.target, p.cur - step);
         // ease in perception: the multiplier is linear light, so square the ramp position
-        const g = p.cur; p.mat.color.setRGB(g, g * 0.98, g * 0.94);
+        const g = p.cur;
+        // my room: people are solid whenever the head is up (no ghosts); the ones you face are brighter; they fade away only when you look down
+        if (mr) { const b = g <= LIGHT.dim ? 0.5 : 0.5 + 0.5 * (g - LIGHT.dim) / (LIGHT.lit - LIGHT.dim); p.mat.color.setRGB(b, b * 0.98, b * 0.94); p.mat.opacity = Math.max(0, Math.min(1, (g - LIGHT.out) / (LIGHT.dim - LIGHT.out))); p.mesh.visible = p.mat.opacity > 0.01; }
+        else p.mat.color.setRGB(g, g * 0.98, g * 0.94);
         // signs of life that a flat sprite can carry: slow breathing, sitting a little taller when lit, a small dip of the head
         const lit = Math.max(0, Math.min(1, (g - LIGHT.dim) / (LIGHT.lit - LIGHT.dim)));
         const sy = 1 + 0.004 * Math.sin(lifeT * 1.15 + p.phase) + 0.012 * lit;
-        let dip = 0; if (p.nod > 0) { p.nod -= dt; const x = 1 - Math.max(0, p.nod) / 0.6; dip = x > 0 && x < 1 ? 0.014 * Math.sin(Math.PI * x) : 0; }
-        p.mesh.scale.y = sy; p.mesh.position.y = p.y0 + personH * sy / 2 - dip;
+        let lean = 0; if (p.nod > 0) { p.nod -= dt; const x = 1 - Math.max(0, p.nod) / 0.9; lean = x > 0 && x < 1 ? 0.028 * Math.sin(Math.PI * x) : 0; }      // a flat picture cannot nod; it can sit forward a little
+        p.mesh.scale.set(1 + lean, sy + lean, 1); p.mesh.position.y = p.y0 + personH * (sy + lean) / 2;
       }
       blocks.forEach((b, bi) => {
         const mine = people.filter((p) => p.block === bi); const lv = mine.length ? mine.reduce((s, p) => s + p.cur, 0) / mine.length : 0;
@@ -250,7 +275,8 @@ export async function buildWorld({ panel = false, textScale = 1 } = {}) {
       });
       const vs = veilTarget > veilCur ? dt / 0.3 : dt / 0.25;
       veilCur = veilTarget > veilCur ? Math.min(veilTarget, veilCur + vs) : Math.max(veilTarget, veilCur - vs);
-      veil.material.opacity = veilCur; veil.visible = veilCur > 0.01;
+      if (mr) { veil.visible = false; const o = 1 - 0.86 * veilCur; for (const m of monMats) m.opacity = o; }
+      else { veil.material.opacity = veilCur; veil.visible = veilCur > 0.01; }
     },
   };
   api.monitor({ mode: 'message', title: '' }); api.rail({}); api.clock({ seconds: 180, target: 180, state: 'normal' });

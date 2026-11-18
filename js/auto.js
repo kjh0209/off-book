@@ -68,7 +68,8 @@ export async function runAuto(enter, mode) {
   ok('the pitch has 18 lines', S.kind === 'run' && run().lines.length === 18);
   ok('the clock stands before the first look up', run().elapsed === 0);
   adv(0.8, -21); adv(1.5, -3, -16);
-  ok('looking left lights the left block only', lum(0) > 0.9 && lum(1) < 0.2 && lum(2) < 0.2, `${lum(0).toFixed(2)} ${lum(1).toFixed(2)} ${lum(2).toFixed(2)}`);
+  ok('looking left lights the left block only', lum(0) > 0.35 && lum(1) < 0.2 && lum(2) < 0.2, `${lum(0).toFixed(2)} ${lum(1).toFixed(2)} ${lum(2).toFixed(2)}`);
+  ok('one person in that block is the brightest', room.world.people.filter((p) => p.cur > 0.95).length === 1, String(room.world.people.filter((p) => p.cur > 0.95).length));
   if (mode === 'left') { room.look.yaw = -16; return hold(); }
   adv(1.2, -3, 0);
   if (mode === 'run') return hold();
@@ -93,15 +94,20 @@ export async function runAuto(enter, mode) {
   const e0 = run().elapsed; adv(4, -3); ok('the clock stands while paused', run().elapsed === e0);
   room.act('next'); adv(0.2); ok('Keep going returns to the same line', S.kind === 'run' && run().index === 7);
   for (let i = 7; i < 18; i++) say(5, i % 3 === 0 ? -14 : i % 3 === 1 ? 0 : 14);
+  ok('after the last line the monitor asks you to stay with them', S.kind === 'land');
+  if (mode === 'land') { adv(0.9, -3, 0); room.look.pitch = -8; return hold(); }
+  adv(2.2, -3, 0);
   ok('the run ends at the notes sheet', S.kind === 'curtain' && !!S.result);
   const r = S.result || {};
   ok('zone shares add up to 100', r.zones && r.zones[0] + r.zones[1] + r.zones[2] === 100, String(r.zones));
   ok('the weak lines are the kept line and the pulled-out line', String(r.weak) === '0,5', String(r.weak));
   ok('said to the room counts the rest', r.said === 16 && r.total === 18, `${r.said}/${r.total}`);
   adv(1.6);
-  ok('first button is Run the weak lines', S.menu.buttons[0].label === 'Run the weak lines', S.menu.buttons[0].sub);
-  ok('after the sheet the house shows where the eyes went', (adv(1.5), lum(0) < lum(1) - 0.2), `${lum(0).toFixed(2)} ${lum(1).toFixed(2)} ${lum(2).toFixed(2)}`);
-  ok('a question is offered after a full run', S.menu.buttons.map((b) => b.label).join() === 'Run the weak lines,Take a question,Done for tonight');
+  ok('first button is Run weak lines', S.menu.buttons[0].label === 'Run weak lines', S.menu.buttons[0].sub);
+  const lit = () => room.world.people.filter((p) => p.cur > 0.9).length;
+  ok('after the sheet only the people you turned to stay bright', (adv(1.5), lit() === room.reach.got.size && lit() > 2 && lit() < 21), `${lit()} lit, ${room.reach.got.size} reached`);
+  ok('then everyone is lit again', (adv(6), lit() === 21), String(lit()));
+  ok('a question is offered after a full run', S.menu.buttons.map((b) => b.label).join() === 'Run weak lines,Done for tonight,A question');
   if (mode === 'curtain') { room.look.yaw = -8; return hold(); }
   const saved = JSON.parse(localStorage.getItem('offbook.v1') || '{}'), ids = room.scripts[1].lines.map((l) => l.id);
   ok('levels are saved on this device', saved.levels && saved.levels[ids[1]] === 1 && saved.levels[ids[0]] === 0 && saved.levels[ids[5]] === 0, JSON.stringify(ids.slice(0, 6).map((id) => saved.levels && saved.levels[id])));
@@ -110,7 +116,7 @@ export async function runAuto(enter, mode) {
   say(5); ok('the weak-lines run moves to the next weak line', S.run.index === 5);
   say(5); adv(1.6);
   ok('the weak-lines run ends with no target time', S.kind === 'curtain' && S.result.targetSec === null && S.result.opening === null);
-  S.menu.focus = S.menu.buttons.length - 1; room.act('next'); adv(0.3);
+  S.menu.focus = S.menu.buttons.findIndex((b) => b.label === 'Done for tonight'); room.act('next'); adv(0.3);
   ok('Done for tonight returns to the script menu', S.kind === 'menu');
   ok('the menu tile carries the record of the run', /night 1, 16 of 18/.test(S.menu.buttons[1].sub), S.menu.buttons[1].sub);
   if (mode === 'question') { S.menu.focus = S.menu.buttons.length - 1; room.act('next'); adv(1.2, -3); return hold(); }

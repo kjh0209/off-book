@@ -24,7 +24,7 @@ const STOP = new Set(('a an and are as at be been but by can could did do does f
   'before being below between both down during each few further here im ive off once only other own same should through under until upon ' +
   'every much many may might must shall still even ever get got go going make made take took put say said see let lets well now yet').split(' '));
 
-const ALWAYS = new Set(('not no never none nothing nobody without cannot cant dont doesnt didnt wont isnt arent wasnt werent ' +
+const ALWAYS = new Set(('not no never none nothing nobody without cannot cant dont doesnt didnt wont isnt arent wasnt werent out off only less fewer until unless ' +
   'zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty thirty forty fifty sixty ' +
   'seventy eighty ninety hundred thousand million billion percent half double twice first second third').split(' '));
 const isAlways = (b) => /\d/.test(b) || b.split('-').some((x) => ALWAYS.has(x.replace(/['’]/g, '')));

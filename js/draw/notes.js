@@ -114,18 +114,18 @@ function seat(ctx, x, y, s, r) {
   ctx.closePath();
   ctx.fill();
 }
-// Seating plan as seen from the table: three blocks of 2, 3 and 2 chairs, three rows deep.
-// Ink density is the share of the time each block was looked at.
-function seatingPlan(ctx, right, top, zones) {
-  const cols = [2, 3, 2], S = 46, P = 54, BLOCK_GAP = 56;
-  const rank = [0, 1, 2].sort((a, b) => zones[a] - zones[b]); const stepInk = [0.22, 0.5, 1.0];
-  const max = Math.max(zones[0], zones[1], zones[2], 1);
-  let x = right - (7 * P - 3 * (P - S) + 2 * BLOCK_GAP);
-  for (let b = 0; b < 3; b++) {
-    ctx.fillStyle = rgba(color.ink, stepInk[rank.indexOf(b)]);
-    for (let row = 0; row < 3; row++) for (let c = 0; c < cols[b]; c++) seat(ctx, x + c * P, top + row * P, S, 6);
-    x += cols[b] * P - 8 + BLOCK_GAP;
+// Seating plan as seen from the table: the seats you turned to are inked, the rest are left pale.
+// 21 seats are drawn as the room is set (three blocks, rows of 2, 3 and 2, front row at the bottom); any other number as one row.
+function seatingPlan(ctx, left, top, reached) {
+  const S = 74, P = 84, GAP = 40, n = reached.length;
+  const dot = (x, y, on) => { if (on) { ctx.fillStyle = INK; seat(ctx, x, y, S, 8); } else { ctx.strokeStyle = rgba(color.ink, 0.45); ctx.lineWidth = 5; ctx.strokeRect(x + 3, y + 3, S - 6, S - 6); } };   // given a line: inked; not yet: an empty chair
+  if (n === 21) {
+    const bw = 3 * P - (P - S); let i = 0;
+    for (let b = 0; b < 3; b++) for (let r = 0; r < 3; r++) { const m = [2, 3, 2][r]; for (let k = 0; k < m; k++) dot(left + b * (bw + GAP) + (3 - m) * P / 2 + k * P, top + (2 - r) * P, reached[i++]); }
+    return 3 * bw + 2 * GAP;
   }
+  for (let k = 0; k < n; k++) dot(left + k * P, top + P, reached[k]);
+  return n * P - (P - S);
 }
 
 function labelled(ctx, label, value, x, y, valueWeight) {
@@ -174,83 +174,74 @@ export function drawNotes(ctx, w, h, d) {
       rows = wrap(ctx, words.slice(start), textW - dw);
       rows[0].forEach((w) => { w.x += dw; }); rows[0].unshift({ t: '\u2026', x: 0, w: dw, mark: false });
     }
+    if (rows.length > 1) {              // the line runs on: end the row with an ellipsis so it reads as shortened, not cropped
+      const dots = '\u2026', dw = ctx.measureText(' ' + dots).width, row = rows[0];
+      while (row.length > 1 && row[row.length - 1].x + row[row.length - 1].w + dw > textW) row.pop();
+      const lastW = row[row.length - 1]; row.push({ t: dots, x: lastW.x + lastW.w + ctx.measureText(' ').width * 0.4, w: dw, mark: false });
+    }
     return rows.slice(0, 1);
   };
   const weak = weakIn.map((it) => ({ n: it.n, rows: oneRow(it) }));
-  const ITEM_GAP = 12, TOP = 64, BOTTOM = 56;
+  const ITEM_GAP = 10, TOP = 52, BOTTOM = 44;
   // first and last lines: one of five plain outcomes each; a weak-lines run has neither; a one-line script has one row
   const SAY = { clean: 'said to the room', looked: 'needed the full line', again: 'looked down again', fast: 'went past it quickly', twice: 'said it twice' };
   const say = (v) => (v === true ? SAY.clean : v === false ? SAY.looked : SAY[v] || null);
   const rows3 = [];
   if (say(d.opening)) rows3.push(['Opening line:', say(d.opening), 500]);
-  if (say(d.closing) && d.total > 1) rows3.push(['Closing line:', say(d.closing), 500]);
-  rows3.push(['Said to the room:', `${d.said} of ${d.total}`, 600]);
-  if (d.last) rows3.push(['Last time:', d.last, 500]);      // the same script, the run before this one
-  const gaze = d.gaze !== undefined ? d.gaze : gazeSentence(zones);
-  const hA = 190, hB = (gaze ? 3 : 2) * LH + (gaze ? 0 : 24), hC = rows3.length * LH;
-  const hD = weak.length ? LH + 8 + weak.length * LH + (weak.length - 1) * ITEM_GAP : LH;
-  const free = H - TOP - BOTTOM - hA - hB - hC - hD;
-  const gap = Math.max(8, Math.min(72, free / 3));
+  if (say(d.closing) && d.total > 1) rows3.push(['Closing line:', say(d.closing) + (d.landed && d.closing === 'clean' ? ', and held' : ''), 500]);
+  const plan = Array.isArray(d.reached) && d.reached.length ? d.reached : null, given = plan ? plan.filter(Boolean).length : 0;
+  const hA = 150, hB = 2 * LH, hP = plan ? 268 : 0, hC = rows3.length * LH;
+  const hD = LH + 8 + weak.length * LH + Math.max(0, weak.length - 1) * ITEM_GAP;
+  const parts = [hA, hB, hP, hC, hD].filter((x) => x > 0);
+  const free = H - TOP - BOTTOM - parts.reduce((a, b) => a + b, 0);
+  const gap = Math.max(6, Math.min(64, free / (parts.length - 1)));
   let y = TOP;
 
   // 1. time
-  if (d.title) {
-    setFont(ctx, 400, F);
-    ctx.fillStyle = INK2;
-    ctx.textAlign = 'right';
-    ctx.fillText(String(d.title), W - M, y + 68, 1280);
-    ctx.textAlign = 'left';
-  }
-  setFont(ctx, 500, 176, true);
-  ctx.fillStyle = INK;
-  const stamp = mmss(d.timeSec);
-  ctx.fillText(stamp, M - 8, y + 148);
+  if (d.title) { setFont(ctx, 400, F); ctx.fillStyle = INK2; ctx.textAlign = 'right'; ctx.fillText(String(d.title), W - M, y + 60, 1100); ctx.textAlign = 'left'; }
+  setFont(ctx, 500, 132, true); ctx.fillStyle = INK;
+  const stamp = mmss(d.timeSec); ctx.fillText(stamp, M - 6, y + 122);
   const stampW = ctx.measureText(stamp).width;
-  setFont(ctx, 500, F);
-  ctx.fillText(timeSentence(d.timeSec, d.targetSec), M + stampW + 40, y + 148);
+  setFont(ctx, 500, F); ctx.fillText(timeSentence(d.timeSec, d.targetSec), M + stampW + 40, y + 122);
   y += hA + gap;
 
-  // 2. eyes up; where the eyes went, in words and figures at full size; the one thing to do about it
-  setFont(ctx, 500, F);
-  ctx.fillStyle = INK;
-  ctx.fillText(`${Math.round(d.eyesUp)}% of the time your head was up`, M, y + 68);
+  // 2. how long the head was up, and where it pointed
+  setFont(ctx, 500, F); ctx.fillStyle = INK;
+  ctx.fillText(`Head up ${Math.round(d.eyesUp)}% of the time`, M, y + 68);
   let zx = M;
   ['Left', 'Centre', 'Right'].forEach((name, i) => {
     setFont(ctx, 400, F); ctx.fillStyle = INK2; ctx.fillText(name, zx, y + 68 + LH); zx += ctx.measureText(name + ' ').width;
     setFont(ctx, 600, F); ctx.fillStyle = INK; const v = `${Math.round(zones[i])}%`; ctx.fillText(v, zx, y + 68 + LH); zx += ctx.measureText(v).width + 56;
   });
-  setFont(ctx, 600, F);
-  if (gaze) ctx.fillText(gaze, M, y + 68 + 2 * LH);
-  seatingPlan(ctx, W - M, y + 24, zones);
   y += hB + gap;
 
-  // 3. first and last lines, then the count
-  rows3.forEach(([label, value, weight], k) => labelled(ctx, label, value, M, y + 68 + k * LH, weight));
-  y += hC + gap;
+  // 3. the room as you left it: each inked seat is a person you gave a whole sentence to. No total: it is not a score.
+  if (plan) {
+    const pw = seatingPlan(ctx, M, y + 8, plan), tx = M + pw + 72;
+    setFont(ctx, 500, F); ctx.fillStyle = INK;
+    ctx.fillText(given ? 'You gave a full sentence' : 'Pick one person for', tx, y + 104);
+    ctx.fillText(given ? `to ${given === 1 ? 'one person' : given + ' people'}` : 'each sentence', tx, y + 104 + LH);
+    y += hP + gap;
+  }
 
-  // 4. the lines to run again, under one sentence that says what happens to them
-  setFont(ctx, 500, F);
-  ctx.fillStyle = INK;
-  ctx.fillText(closingSentence(weak.length), M, y + 68);
-  if (weak.length) y += LH + 8;
+  // 4. first and last lines
+  rows3.forEach(([label, value, weight], k) => labelled(ctx, label, value, M, y + 68 + k * LH, weight));
+  if (hC) y += hC + gap;
+
+  // 5. the count, and under it the lines to run again
+  setFont(ctx, 500, F); ctx.fillStyle = INK;
+  const head = `Said to the room: ${d.said} of ${d.total}` + (weak.length ? `. ${['One', 'Two', 'Three'][Math.min(weak.length, 3) - 1]} to run again` : '');
+  ctx.fillText(head, M, y + 68);
+  y += LH + 8;
   weak.forEach((item, wi) => {
-    setFont(ctx, 400, F, true);
-    ctx.fillStyle = INK2;
-    ctx.textAlign = 'right';
-    ctx.fillText(String(item.n), M + 76, y + 68);
-    ctx.textAlign = 'left';
-    setFont(ctx, 500, F);
-    ctx.fillStyle = INK;
+    setFont(ctx, 400, F, true); ctx.fillStyle = INK2; ctx.textAlign = 'right'; ctx.fillText(String(item.n), M + 76, y + 68); ctx.textAlign = 'left';
+    setFont(ctx, 500, F); ctx.fillStyle = INK;
     item.rows.forEach((row, ri) => {
-      const base = y + 68 + ri * LH;
-      let run = null;
+      const base = y + 68 + ri * LH; let run = null;
       row.forEach((word, i) => {
         ctx.fillText(word.t, M + INDENT + word.x, base);
         if (word.mark) run = run ? { x0: run.x0, x1: word.x + word.w } : { x0: word.x, x1: word.x + word.w };
-        if (run && (!word.mark || i === row.length - 1)) {
-          pencil(ctx, M + INDENT + run.x0, M + INDENT + run.x1, base + 15, (Number(item.n) || wi + 1) * 131 + ri * 17 + i);
-          run = null;
-        }
+        if (run && (!word.mark || i === row.length - 1)) { pencil(ctx, M + INDENT + run.x0, M + INDENT + run.x1, base + 15, (Number(item.n) || wi + 1) * 131 + ri * 17 + i); run = null; }
       });
     });
     y += LH + ITEM_GAP;

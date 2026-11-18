@@ -91,11 +91,28 @@ $('copy').addEventListener('click', async () => {
   try { await navigator.clipboard.writeText(link); say('Link copied. Message it to yourself and open it in the headset browser.'); }
   catch { say('Could not copy. Select the address bar after pressing Send to headset, or paste your script in the headset browser.'); }
 });
+// ---------- cue cards for the day ----------
+function showCards() {
+  const lines = parsed.lines.length ? parsed.lines : splitScript(SAMPLES.pitch.text).lines, n = lines.length;
+  $('cardstitle').textContent = (parsed.lines.length ? data.own.title : SAMPLES.pitch.title) + ': cue cards';
+  $('cardlist').innerHTML = lines.map((l, i) => {
+    const full = i === 0 || i === n - 1, todo = parsed.lines.length && data.clean[l.id] !== 1 && Object.keys(data.clean).length > 0;
+    // key words that stand next to each other in the line stay together ("six years", "thirty-one percent")
+    const groups = []; l.words.forEach((w, k) => { if (!w.key) return; const t = w.t.replace(/[.,;:!?]+$/, ''); if (groups.length && groups[groups.length - 1].end === k - 1) { groups[groups.length - 1].t += ' ' + t; groups[groups.length - 1].end = k; } else groups.push({ t, end: k }); });
+    const body = full ? esc(l.text) : groups.map((g) => `<span class="k">${esc(g.t)}</span>`).join('<span class="sep">\u00b7</span>');
+    return `<li class="${todo ? 'todo' : ''}" data-full="${esc(l.text)}"><span>${body}</span>${full ? '' : `<small>${todo ? 'not yet said to the room. ' : ''}tap for the whole line</small>`}</li>`;
+  }).join('');
+  $('cards').hidden = false; window.scrollTo(0, 0);
+}
+$('cardsbtn').addEventListener('click', showCards);
+$('cardlist').addEventListener('click', (e) => { const li = e.target.closest('li'); if (!li || li.dataset.open) return; li.dataset.open = '1'; li.querySelector('span').textContent = li.dataset.full; const sm = li.querySelector('small'); if (sm) sm.remove(); });
+$('cardsclose').addEventListener('click', () => { $('cards').hidden = true; });
 $('ownbtn').addEventListener('click', () => { document.body.classList.add('own'); $('text').focus(); });
 $('send').addEventListener('click', (e) => { if (!parsed.lines.length) { e.preventDefault(); say('Paste a script first. Without one the room starts with samples.'); } });
 
 // ---------- the room ----------
-let xrOK = false, room = null, session = null;
+let xrOK = false, arOK = false, room = null, session = null;
+if (navigator.xr && navigator.xr.isSessionSupported) navigator.xr.isSessionSupported('immersive-ar').then((ok) => { arOK = ok; }).catch(() => {});
 // On a headset the page is a door, not a form: one button, with the script box a tap away.
 if (navigator.xr && navigator.xr.isSessionSupported) navigator.xr.isSessionSupported('immersive-vr').then((ok) => { xrOK = ok; if (ok && params.get('preview') !== '1') document.body.classList.add('xr'); }).catch(() => {});
 // Fetch the room's code and pictures now, so the headset is not left looking at nothing after the button is pressed.
@@ -105,9 +122,10 @@ let linkFailed = false;
 async function enter(auto = false, extra = {}) {
   const settings = { free: data.settings.hand === 'left' ? 'left' : 'right', oneHand: data.settings.hand === 'one', textSize: data.settings.textSize, room: data.settings.room, mode: data.settings.mode, fade: data.settings.fade !== '0', sound: data.settings.sound !== '0' && !auto };
   if (params.get('fade') === '0') settings.fade = false;
-  if (params.get('room') === 'panel' || params.get('room') === 'full') settings.room = params.get('room');
+  if (['panel', 'full', 'mine'].includes(params.get('room'))) settings.room = params.get('room');
   // the session must be asked for inside the click, before anything is awaited
-  if (xrOK && !auto && params.get('preview') !== '1') { try { session = await navigator.xr.requestSession('immersive-vr', { optionalFeatures: ['hand-tracking', 'local-floor'] }); } catch { session = null; } }
+  if (settings.room === 'mine' && xrOK && !arOK) settings.room = 'full';        // no passthrough on this device: the hall instead
+  if (xrOK && !auto && params.get('preview') !== '1') { try { session = await navigator.xr.requestSession(settings.room === 'mine' ? 'immersive-ar' : 'immersive-vr', { optionalFeatures: ['hand-tracking', 'local-floor'] }); } catch { session = null; } }
   document.body.classList.add('in-room');
   $('keytext').textContent = session ? '' : matchMedia('(pointer: coarse)').matches ? 'Preview: tap to go on, drag to look, press and hold to see the line, two fingers to pause.' : 'Preview without a headset: Space goes on, hold S to read, drag to look around, Left goes back, hold Down to see the line, P pauses.';
   const { enterRoom } = await mainReady;
@@ -129,6 +147,7 @@ $('leave').addEventListener('click', () => { if (room) room.S && room.stop(); do
     history.replaceState(null, '', location.pathname + location.search);
   }
   parse(); $('text').value = plainText(); $('name').value = data.own.title; renderSettings(); renderLines();
+  if (params.get('cards') === '1') showCards();
   if (params.get('capture')) { const { runCapture } = await import('./capture.js'); runCapture(enter, params).catch((e) => console.error('CAPTURE ERROR ' + (e && e.stack || e))); return; }
   if (params.get('auto')) { const { runAuto } = await import('./auto.js'); runAuto(enter, params.get('auto')).catch((e) => console.error('AUTO ERROR ' + (e && e.stack || e))); }
 })();

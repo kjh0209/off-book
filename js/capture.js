@@ -45,6 +45,11 @@ export async function runCapture(enter, params) {
   const opts = { size: [W, H], onSound: (name, at) => events.push({ name, t: +at.toFixed(3) }) };
   if (params.get('own')) { /* a script arrives through the link as usual */ }
   const room = await enter(opts, { sim: true, fov: +(params.get('fov') || 64) }), S = room.S, c = room.renderer.domElement;
+  if (room.world.mr) {       // no camera in a simulator: a photograph of a real room stands in for passthrough
+    const tex = await new THREE.TextureLoader().loadAsync('./shots/room.jpg'); tex.colorSpace = THREE.SRGBColorSpace;
+    room.world.backdrop(tex, +(params.get('turn') || 0));
+    const drop = +(params.get('drop') || 0); room.world.people.forEach((p) => { p.y0 -= drop; });      // the photograph was taken from standing height: put the people on its floor
+  }
   const post = (path, body, type) => fetch(`${SERVER}/${scene}/${path}`, { method: 'POST', body, headers: type ? { 'Content-Type': type } : {} });
 
   // ---------- the performer ----------
@@ -86,6 +91,19 @@ export async function runCapture(enter, params) {
 
   // ---------- the scenes ----------
   const SCENES = {
+    // a short look around, to check how the stand-in room sits behind the app
+    async roomtest() { room.data.seen.try4 = 1; room.act('next'); await run(0.2); S.menu.focus = 1; room.act('next'); look(ROOM, 0); await run(1.6); look(ROOM, -20); await run(1.2); look(DOWN, 0); await run(1.2); },
+    // a few frames with the hands up, to check how they are drawn
+    async hands() { look(-14, 0); hand.right.liftTo = 1; hand.left.liftTo = 1; await run(0.8); hand.right.pinchTo = 1; await run(0.5); },
+    // the first seconds of the film: already seated, a line on the monitor, the head comes up, the room answers
+    async open() {
+      room.data.seen.try4 = 1; room.act('next'); cur.pitch = DOWN; look(DOWN, 0); for (let k = 0; k < 6; k++) { t += 1 / FPS; room.step(t); } S.menu.focus = 1; room.act('next'); frame = 0; hand.right.liftTo = 0.35;
+      await run(1.6); mark('up'); look(ROOM, 4); await run(4.6); await pinch('right'); await run(0.4);
+      mark('left'); await say(3.6, -19, 1.1); mark('right'); await say(5.2, 17, 1.2);
+      mark('down'); look(DOWN, 0); await run(1.7); look(ROOM, -3); await run(4.6); await pinch('right'); await run(0.8);
+    },
+    // a short look around, to check how the stand-in room sits behind the app
+    async roomtest() { room.data.seen.try4 = 1; room.act('next'); await run(0.2); S.menu.focus = 1; room.act('next'); look(ROOM, 0); await run(1.6); look(ROOM, -20); await run(1.2); look(DOWN, 0); await run(1.2); },
     // a few frames with the hands up, to check how they are drawn
     async hands() { look(-14, 0); hand.right.liftTo = 1; hand.left.liftTo = 1; await run(0.8); hand.right.pinchTo = 1; await run(0.5); },
     // the first seconds of the film: already seated, a line on the monitor, the head comes up, the room answers
@@ -128,8 +146,9 @@ export async function runCapture(enter, params) {
         room.act('next');
       }
       cur.pitch = ROOM; cur.yaw = 0; look(ROOM, 0); mark('clock'); await run(1.2);
-      await say(3.4, 14, 1.1); await say(3.6, 0, 1.0); mark('last'); look(DOWN, 0); await run(1.0); look(ROOM, 0); await run(3.6); await pinch('right');
-      mark('house'); look(ROOM, 10); await run(1.4); look(ROOM, -10); await run(2.6); mark('notes'); look(-2, -14); await run(6.5);
+      await say(3.4, 14, 1.1); await say(3.6, 0, 1.0); mark('last'); look(DOWN, 0); await run(1.0); look(ROOM, 3); await run(3.6); await pinch('right');
+      mark('land'); await run(2.1);                    // the last word: stay with one person
+      mark('house'); look(ROOM, 12); await run(1.5); look(ROOM, -8); await run(1.6); mark('notes'); look(-2, -14); await run(4.6); mark('result'); look(ROOM, 8); await run(3.2);
       look(-17, -4); await run(1.2); mark('weak'); await pinch('right'); await run(1.6);
     },
     // one question from the room

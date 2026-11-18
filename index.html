@@ -150,6 +150,20 @@
   body.xr:not(.own) .desk { display: none; }
   body.xr:not(.own) #ownbtn { display: inline-block; font-size: 16px; margin-top: 16px; }
   body.xr .enter { height: 72px; font-size: 22px; }
+  #cards { position: fixed; inset: 0; z-index: 9; overflow: auto; background: var(--paper); color: var(--ink); }
+  .cards-in { max-width: 720px; margin: 0 auto; padding: 24px 20px 48px; }
+  #cards header { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid var(--ink-rule); padding-bottom: 12px; }
+  #cards h2 { margin: 0; font-size: 22px; line-height: 28px; font-weight: 600; }
+  #cards header button { border: 0; background: transparent; color: var(--ink); text-decoration: underline; text-underline-offset: 4px; font-size: 16px; cursor: pointer; }
+  .cards-note { margin: 12px 0 8px; font-size: 14px; line-height: 20px; color: var(--n4); }
+  #cardlist { margin: 0; padding: 0; list-style: none; counter-reset: c; }
+  #cardlist li { counter-increment: c; display: grid; grid-template-columns: 32px 1fr; column-gap: 8px; padding: 14px 0; border-bottom: 1px solid var(--ink-rule); font-size: 22px; line-height: 32px; font-weight: 500; }
+  #cardlist li::before { content: counter(c); font-family: var(--mono); font-size: 14px; color: var(--n4); text-align: right; }
+  #cardlist li.todo { font-weight: 600; }
+  #cardlist li.todo .k::after { background: var(--accent-dim); }
+  #cardlist .sep { color: var(--n5); padding: 0 6px; }
+  #cardlist small { display: block; grid-column: 2; font-size: 13px; line-height: 18px; font-weight: 400; color: var(--n4); }
+  @media print { .page, #stage, #keys, #cardsclose { display: none !important; } #cards { position: static; } }
   .more { margin: 0; padding: 16px 0 0; border-top: 1px solid var(--hair); }
   .more summary { cursor: pointer; color: var(--n7); height: 24px; }
   .more .set:first-of-type { padding-top: 16px; }
@@ -194,7 +208,7 @@
       <ol class="lines" id="lines"></ol>
       <p class="warn" id="warn" hidden></p>
       <p class="how count" id="count" style="font-family:var(--mono)"></p>
-      <div class="sheet-foot"><span></span><span class="acts"><button type="button" id="reset" title="Every line of this script goes back to the Read level">Start again from Read</button><button type="button" id="clear">Clear</button></span></div>
+      <div class="sheet-foot"><span></span><span class="acts"><button type="button" id="cardsbtn" title="Key words of every line, for the last look before you go on">Cue cards</button><button type="button" id="reset" title="Every line of this script goes back to the Read level">Start again from Read</button><button type="button" id="clear">Clear</button></span></div>
     </section>
 
     <section class="settings" aria-label="Settings">
@@ -203,7 +217,7 @@
       <div class="set"><div class="set-name">Text size <span>on the monitor</span></div>
         <div class="seg" data-key="textSize"><button type="button" data-v="regular">Regular</button><button type="button" data-v="large">Large</button><button type="button" data-v="largest">Largest</button></div></div>
       <div class="set"><div class="set-name">Room <span>who sits in the chairs</span></div>
-        <div class="seg" data-key="room"><button type="button" data-v="full">Full room</button><button type="button" data-v="panel">Panel of three</button></div></div>
+        <div class="seg" data-key="room"><button type="button" data-v="full">The hall</button><button type="button" data-v="panel">Panel</button><button type="button" data-v="mine">My room</button></div></div>
       <div class="set"><div class="set-name">Target time <span>for your own script</span></div>
         <div class="step"><button type="button" id="less" aria-label="Thirty seconds less">&minus;</button><output id="target">3:00</output><button type="button" id="more" aria-label="Thirty seconds more">+</button></div></div>
       <details class="more"><summary>More settings</summary>
@@ -217,6 +231,13 @@
     </section>
   </main>
 </div>
+<section id="cards" hidden aria-label="Cue cards">
+  <div class="cards-in">
+    <header><h2 id="cardstitle"></h2><button type="button" id="cardsclose">Close</button></header>
+    <p class="cards-note">For the last look in the waiting room, not for the stage. First and last lines in full; the rest as key words. Tap a card for the whole line.</p>
+    <ol id="cardlist"></ol>
+  </div>
+</section>
 <canvas id="stage"></canvas>
 <div id="keys"><span id="keytext"></span><button type="button" id="leave">Leave the room</button></div>
 
