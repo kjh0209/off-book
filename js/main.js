@@ -235,6 +235,7 @@ export async function enterRoom({ canvas, settings, own, linkFailed = false, sto
         if (was === 'breathe' && S.q.phase === 'answer') world.askerHand(false);
         world.light('ask');
         const key = S.q.phase + '|' + Math.round(S.q.breatheShare * 12);
+        if (S.q.text !== S.qSaid) { S.qSaid = S.q.text; try { if (settings.sound !== false && settings.sound !== 'off' && !auto && typeof speechSynthesis !== 'undefined') { const u = new SpeechSynthesisUtterance(S.q.text); u.lang = 'en-US'; u.rate = 0.95; speechSynthesis.cancel(); speechSynthesis.speak(u); } } catch (e) { /* the question stays on its card */ } }     // the asker's voice, from the browser's own speech
         if (key !== S.qKey) { S.qKey = key; world.question({ text: S.q.text, phase: S.q.phase === 'breathe' ? 'breathe' : 'answer', t: S.q.breatheShare }); }
         const rem = S.q.remaining; world.clock({ seconds: Math.abs(S.q.phase === 'breathe' ? CFG.answer : rem), target: CFG.answer, state: S.qResult ? 'done' : rem < 0 ? 'over' : 'normal' });
       } else {
