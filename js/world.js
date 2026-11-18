@@ -253,7 +253,7 @@ export async function buildWorld({ panel = false, textScale = 1, mr = false } = 
 
   // ---------- state the app drives ----------
   let reachedSet = null;
-  let lightMode = 'half', lightZone = 1, lightShares = [1, 1, 1], veilTarget = 0, veilCur = 0, fadeOutT = 0.4, lifeT = 0;
+  let lightMode = 'half', lightZone = 1, lightShares = [1, 1, 1], veilTarget = 0, veilCur = 0, fadeOutT = 0.4, lifeT = 0, listenT = 2;
   const api = {
     scene, room, mon, screen, people, blocks, panel, mr, handsReady,
     monitor(state) { screenT.draw((c, w, h) => drawMonitor(c, w, h, state)); },
@@ -274,6 +274,16 @@ export async function buildWorld({ panel = false, textScale = 1, mr = false } = 
     // the end: the people you turned to are lit, the others stay half lit
     reached(set) { reachedSet = set; },
     // a stand-in for the real room when there is no passthrough camera (simulator capture): a photograph on a sphere
+    // my room, with the headset's own map of it: sit the people on the detected floor, and bring the rows in if a wall is nearer than they are
+    fitRoom(floorY, wallDist) {
+      if (!mr) return;
+      const k = wallDist ? Math.max(0.55, Math.min(1, (wallDist - 0.45) / 2.7)) : 1, dy = Math.max(-0.4, Math.min(0.4, floorY || 0));
+      people.forEach((p) => {
+        if (p.bx === undefined) { p.bx = p.mesh.position.x; p.bz = p.mesh.position.z; p.by0 = p.y0; if (p.shadow) { p.sx = p.shadow.position.x; p.sz = p.shadow.position.z; p.sy = p.shadow.position.y; } }
+        p.mesh.position.x = p.bx * k; p.mesh.position.z = p.bz * k; p.y0 = p.by0 + dy;
+        if (p.shadow) p.shadow.position.set(p.sx * k, p.sy + dy, p.sz * k);
+      });
+    },
     dropPeople(by) { people.forEach((p) => { p.y0 -= by; if (p.shadow) p.shadow.position.y -= by; }); },
     backdrop(texture, turn = 0) { const sky = new THREE.Mesh(new THREE.SphereGeometry(30, 48, 32), basic({ map: texture, side: THREE.BackSide, depthWrite: false })); sky.rotation.y = turn * deg; sky.renderOrder = -10; scene.add(sky); return sky; },
     veil(amount) { veilTarget = amount; },
@@ -311,6 +321,8 @@ export async function buildWorld({ panel = false, textScale = 1, mr = false } = 
     update(dt) {
       lifeT += dt;
       for (const side of ['left', 'right']) { const h = hands[side]; if (h.flash > 0) { h.flash -= dt; h.skin.color.copy(h.flash > 0 ? FLASH : SKIN); if (h.sk) h.sk.mat.color.copy(h.flash > 0 ? FLASH_SKIN : SKIN); } }
+      // while you are speaking to them, someone in the room nods now and then
+      listenT -= dt; if (listenT <= 0) { listenT = 1.3 + Math.random() * 1.7; if (lightMode === 'zone' && people.length) { const c = people.filter((q) => q.block === lightZone && !(q.nod > 0)); if (c.length) c[Math.floor(Math.random() * c.length)].nod = 0.9; } }
       for (const p of people) {
         const pi = people.indexOf(p);
         let target = lightMode === 'reached' ? (reachedSet && reachedSet.has(pi) ? LIGHT.lit : 0.42) : lightMode === 'full' ? LIGHT.lit : lightMode === 'half' ? LIGHT.half : lightMode === 'out' ? LIGHT.out : lightMode === 'shares' ? lightShares[p.block]
@@ -327,9 +339,10 @@ export async function buildWorld({ panel = false, textScale = 1, mr = false } = 
         else p.mat.color.setRGB(g, g * 0.98, g * 0.94);
         // signs of life that a flat sprite can carry: slow breathing, sitting a little taller when lit, a small dip of the head
         const lit = Math.max(0, Math.min(1, (g - LIGHT.dim) / (LIGHT.lit - LIGHT.dim)));
-        const sy = 1 + 0.004 * Math.sin(lifeT * 1.15 + p.phase) + 0.012 * lit;
-        let lean = 0; if (p.nod > 0) { p.nod -= dt; const x = 1 - Math.max(0, p.nod) / 0.9; lean = x > 0 && x < 1 ? 0.028 * Math.sin(Math.PI * x) : 0; }      // a flat picture cannot nod; it can sit forward a little
+        const sy = 1 + 0.009 * Math.sin(lifeT * 1.15 + p.phase) + 0.012 * lit;
+        let lean = 0; if (p.nod > 0) { p.nod -= dt; const x = 1 - Math.max(0, p.nod) / 0.9; lean = x > 0 && x < 1 ? 0.04 * Math.sin(Math.PI * x) : 0; }      // a flat picture cannot nod; it can sit forward a little
         p.mesh.scale.set(1 + lean, sy + lean, 1); p.mesh.position.y = p.y0 + personH * (sy + lean) / 2;
+        p.mesh.rotation.x = lean * 2.4; p.mesh.rotation.z = 0.007 * Math.sin(lifeT * 0.7 + p.phase * 1.7);      // a listener's nod tips the picture toward you; nobody sits perfectly still
       }
       blocks.forEach((b, bi) => {
         const mine = people.filter((p) => p.block === bi); const lv = mine.length ? mine.reduce((s, p) => s + p.cur, 0) / mine.length : 0;

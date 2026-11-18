@@ -65,7 +65,7 @@ export async function runAuto(enter, mode) {
   }
   if (mode === 'minedown') {       // my room: look up at the middle, pass a line, look down, and report every person's state
     const dump = (tag) => console.log('MINE ' + tag + ' ' + room.world.people.map((p) => `x${p.mesh.position.x.toFixed(2)}z${p.mesh.position.z.toFixed(2)}:${p.cur.toFixed(2)}/${(+p.focus).toFixed(2)}`).join(' '));
-    room.data.seen.try4 = 1; adv(0.3); room.act('next'); adv(0.3); S.menu.focus = 1; room.act('next'); adv(0.5, -21); adv(3, -3, 2); dump('up'); adv(3, -3, -17); dump('left'); adv(3, -3, 16); dump('right');
+    room.data.seen.try4 = 1; adv(0.3); room.act('next'); adv(0.3); S.menu.focus = 1; room.act('next'); adv(0.5, -21); adv(3, -3, 2); dump('up'); room.world.fitRoom(-0.05, 2.0); adv(0.5, -3, 2); dump('fit'); room.world.fitRoom(0, null); adv(0.3, -3, 2); adv(3, -3, -17); dump('left'); adv(3, -3, 16); dump('right');
     room.act('next'); adv(0.3, -3, 2); adv(2.5, -21, 0); dump('down'); adv(3, -3, 2); room.act('next'); adv(2.5, -21, 0); dump('down2');
     for (let i = 0; i < 6; i++) { adv(0.8, -21, 0); adv(4.5, -3, i % 2 ? 12 : -12); room.act('next'); } adv(2.5, -21, 0); dump('down3'); return;
   }

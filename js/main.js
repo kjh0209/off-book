@@ -338,6 +338,27 @@ export async function enterRoom({ canvas, settings, own, linkFailed = false, sto
   const t0 = performance.now();
   // auto.clock and auto.onFrame let an emulator capture advance exactly one film frame per XR frame
   const clock = auto && auto.clock ? auto.clock : () => (performance.now() - t0) / 1000;
-  renderer.setAnimationLoop(() => { if (!running) return; if (xr) readHands(); step(clock()); renderer.render(world.scene, camera); if (auto && auto.onFrame) auto.onFrame(); });
+  // My room: when the headset shares its planes (floor, walls), seat the people on that floor and in front of that wall. Without planes nothing changes.
+  let fitAt = 0, fitWas = '';
+  const _p = new THREE.Vector3(), _n = new THREE.Vector3(), _q = new THREE.Quaternion(), _c = new THREE.Vector3(), _o = new THREE.Vector3(), _d = new THREE.Vector3();
+  function fitToRoom(frame) {
+    const planes = frame.detectedPlanes, ref = renderer.xr.getReferenceSpace(); if (!planes || !planes.size || !ref || !world.people.length) return;
+    _c.set(0, 0, 0); world.people.forEach((p) => { p.mesh.getWorldPosition(_p); _c.add(_p); }); _c.multiplyScalar(1 / world.people.length);
+    _o.set(0, 1.1, 0); _d.set(_c.x, 0, _c.z).normalize();                    // from the seat toward the middle of the rows
+    let floor = null, wall = null;
+    planes.forEach((plane) => {
+      const pose = frame.getPose(plane.planeSpace, ref); if (!pose) return;
+      const t = pose.transform; _p.set(t.position.x, t.position.y, t.position.z); _q.set(t.orientation.x, t.orientation.y, t.orientation.z, t.orientation.w); _n.set(0, 1, 0).applyQuaternion(_q);
+      if (Math.abs(_n.y) > 0.8) { if (Math.abs(_p.y) < 0.4 && (floor === null || _p.y < floor)) floor = _p.y; }           // the lowest level surface near the floor
+      else if (Math.abs(_n.y) < 0.3) { const facing = _d.dot(_n); if (Math.abs(facing) > 0.5) { const dist = _p.sub(_o).dot(_n) / facing; if (dist > 1.2 && dist < 5 && (wall === null || dist < wall)) wall = dist; } }
+    });
+    const key = (floor === null ? 'x' : floor.toFixed(2)) + '/' + (wall === null ? 'x' : wall.toFixed(1));
+    if (key !== fitWas) { fitWas = key; world.fitRoom(floor || 0, wall); }
+  }
+  renderer.setAnimationLoop((time, frame) => {
+    if (!running) return;
+    if (xr && world.mr && frame && frame.detectedPlanes && time - fitAt > 1000) { fitAt = time; try { fitToRoom(frame); } catch (e) { /* the room stays as it was */ } }
+    if (xr) readHands(); step(clock()); renderer.render(world.scene, camera); if (auto && auto.onFrame) auto.onFrame();
+  });
   return api;
 }

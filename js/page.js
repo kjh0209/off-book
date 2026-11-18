@@ -126,7 +126,7 @@ async function enter(auto = false, extra = {}) {
   // the session must be asked for inside the click, before anything is awaited
   if (settings.room === 'mine' && xrOK && !arOK) settings.room = 'full';        // no passthrough on this device: the hall instead
   if (extra.session) session = extra.session;
-  else if (xrOK && !auto && params.get('preview') !== '1') { try { session = await navigator.xr.requestSession(settings.room === 'mine' ? 'immersive-ar' : 'immersive-vr', { optionalFeatures: ['hand-tracking', 'local-floor'] }); } catch { session = null; } }
+  else if (xrOK && !auto && params.get('preview') !== '1') { try { session = await navigator.xr.requestSession(settings.room === 'mine' ? 'immersive-ar' : 'immersive-vr', { optionalFeatures: settings.room === 'mine' ? ['hand-tracking', 'local-floor', 'plane-detection'] : ['hand-tracking', 'local-floor'] }); } catch { session = null; } }
   document.body.classList.add('in-room');
   $('keytext').textContent = session ? '' : matchMedia('(pointer: coarse)').matches ? 'Preview: tap to go on, drag to look, press and hold to see the line, two fingers to pause.' : 'Preview without a headset: Space goes on, hold S to read, drag to look around, Left goes back, hold Down to see the line, P pauses.';
   const { enterRoom } = await mainReady;
