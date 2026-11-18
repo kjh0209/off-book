@@ -55,7 +55,11 @@ export async function runCapture(enter, params, emu = false) {
   const opts = { size: [W, H], onSound: (name, at) => { if (!quiet) events.push({ name, t: +clockNow(at).toFixed(3) }); } };
   if (params.get('own')) { /* a script arrives through the link as usual */ }
   let dev = null, frameDone = null;
+  const pending = []; let manual = false;      // once the performance starts, the emulator renders exactly one frame per film frame
+  let t = 0, frame = 0;          // declared before the emulator starts calling the clock
   if (emu) {
+    // a headless window throttles requestAnimationFrame to a crawl; the emulator's frame loop only needs "as soon as possible"
+    window.requestAnimationFrame = (cb) => { if (manual) { pending.push(cb); return 0; } return setTimeout(() => cb(performance.now()), 0); }; window.cancelAnimationFrame = (id) => clearTimeout(id);
     const iwer = await import('../shots/iwer.module.js');
     dev = new iwer.XRDevice(iwer.metaQuest3, { stereoEnabled: false }); dev.installRuntime({ forceInstall: true }); dev.primaryInputMode = 'hand';
     dev.position.set(0, 1.2, 0); try { dev.fovy = +(params.get('fov') || 64) * Math.PI / 180; } catch (e) { console.log('CAPTURE fovy ' + e); }
@@ -74,13 +78,13 @@ export async function runCapture(enter, params, emu = false) {
   const post = (path, body, type) => fetch(`${SERVER}/${scene}/${path}`, { method: 'POST', body, headers: type ? { 'Content-Type': type } : {} });
 
   // ---------- the performer ----------
-  let t = 0, frame = 0;
   clockNow = (at) => frame / FPS + Math.max(0, (at ?? t) - t);
   const aim = { pitch: -3, yaw: 0 }, cur = { pitch: -3, yaw: 0 };
   const hand = { right: { lift: 0, liftTo: 0, pinch: 0, pinchTo: 0, down: false }, left: { lift: 0, liftTo: 0, pinch: 0, pinchTo: 0, down: false } };
   const REST = { right: new THREE.Vector3(0.3, 0.76, -0.33), left: new THREE.Vector3(-0.3, 0.76, -0.33) }, UP = { right: new THREE.Vector3(0.21, 1.0, -0.45), left: new THREE.Vector3(-0.21, 1.0, -0.45) };   // raised, but to the sides of the monitor so they never cover the line
   const eul = new THREE.Euler(), quat = new THREE.Quaternion(), wrist = new THREE.Vector3();
   const hq = new THREE.Quaternion(), he = new THREE.Euler();
+  async function xrFrame() { manual = true; while (!pending.length) await new Promise((r) => setTimeout(r, 0)); await new Promise((res) => { frameDone = res; for (const cb of pending.splice(0)) cb(performance.now()); }); }
   async function tick() {
     const dt = 1 / FPS; t += dt;
     const k = 1 - Math.exp(-dt * 6.5);                       // the head eases toward where it is aimed
@@ -102,7 +106,7 @@ export async function runCapture(enter, params, emu = false) {
         room.world.hand(side, handJoints(side, wrist, quat, h.pinch, 0.42 + 0.12 * h.pinch)); S.lostSince[side] = null;
       }
     }
-    if (emu) await new Promise((res) => { frameDone = res; });          // the app's own XR frame loop renders this frame
+    if (emu) await xrFrame();          // the app's own XR frame loop renders this frame
     else { room.step(t); room.render(); }
     const blob = await new Promise((res) => c.toBlob(res, 'image/jpeg', 0.93));
     await post(`f_${String(++frame).padStart(5, '0')}.jpg`, blob, 'image/jpeg');
@@ -216,13 +220,13 @@ export async function runCapture(enter, params, emu = false) {
       room.act('next'); await run(0.2); S.menu.focus = 1; room.act('next'); look(ROOM, 0); await run(0.3);
       const yaws = [0, -14, 14, 0, -13, 15, 0, 13, -15, 0, 14, 0, -13, 12, 0, -14, 13];
       quiet = true; let began = null;
-      const off = (sec, pitch, yaw) => { for (let k = 0; k < Math.round(sec * 30); k++) { t += 1 / 30; room.look.pitch = pitch; room.look.yaw = yaw; room.step(t); } };
+      const off = async (sec, pitch, yaw) => { for (let k = 0; k < Math.round(sec * 30); k++) { t += 1 / 30; if (emu) { he.set(pitch * deg, -yaw * deg, 0, 'YXZ'); hq.setFromEuler(he); dev.position.set(0, 1.2, 0); dev.quaternion.set(hq.x, hq.y, hq.z, hq.w); await xrFrame(); } else { room.look.pitch = pitch; room.look.yaw = yaw; room.step(t); } } };
       for (let i = 0; i < 17; i++) {            // the run up to its last line goes by off camera; its sounds are not laid on the track
-        const r = S.run; if (i === 4) { r.peek(true); off(0.6, ROOM, 0); r.peek(false); }
-        off(0.45, DOWN, 0); if (began === null) began = t; off(i === 7 || i === 12 ? 1.0 : r.minUp(r.index) + 0.08, ROOM, yaws[i]);      // two lines hurried, as in any real run
+        const r = S.run; if (i === 4) { r.peek(true); await off(0.6, ROOM, 0); r.peek(false); }
+        await off(0.45, DOWN, 0); if (began === null) began = t; await off(i === 7 || i === 12 ? 1.0 : r.minUp(r.index) + 0.08, ROOM, yaws[i]);      // two lines hurried, as in any real run
         room.act('next');
       }
-      off(Math.max(0, 55.5 - (t - began)), ROOM, 0);      // sit with them until about three seconds are left
+      await off(Math.max(0, 55.5 - (t - began)), ROOM, 0);      // sit with them until about three seconds are left
       console.log('CAPTURE off-camera run took ' + (t - began).toFixed(1) + ' s');
       quiet = false; cur.pitch = ROOM; cur.yaw = 0; look(ROOM, 0); hand.right.liftTo = 0.45; hand.left.liftTo = 0.3; await run(1.0);
       mark('n_clock'); await run(D.n_clock + 0.3);
