@@ -129,24 +129,10 @@ export async function runCapture(enter, params, emu = false) {
     async roomtest() { room.data.seen.try4 = 1; room.act('next'); await run(0.2); S.menu.focus = 1; room.act('next'); look(ROOM, 0); await run(1.6); look(ROOM, -20); await run(1.2); look(DOWN, 0); await run(1.2); },
     // a few frames with the hands up, to check how they are drawn
     async hands() { look(-14, 0); hand.right.liftTo = 1; hand.left.liftTo = 1; await run(0.8); hand.right.pinchTo = 1; await run(0.5); },
-    // the first seconds of the film: already seated, a line on the monitor, the head comes up, the room answers
-    async open() {
-      room.data.seen.try4 = 1; room.act('next'); cur.pitch = DOWN; look(DOWN, 0); for (let k = 0; k < 6; k++) { t += 1 / FPS; room.step(t); } S.menu.focus = 1; room.act('next'); frame = 0; hand.right.liftTo = 0.35;
-      await run(1.6); mark('up'); look(ROOM, 4); await run(4.6); await pinch('right'); await run(0.4);
-      mark('left'); await say(3.6, -19, 1.1); mark('right'); await say(5.2, 17, 1.2);
-      mark('down'); look(DOWN, 0); await run(1.7); look(ROOM, -3); await run(4.6); await pinch('right'); await run(0.8);
-    },
     // a short look around, to check how the stand-in room sits behind the app
     async roomtest() { room.data.seen.try4 = 1; room.act('next'); await run(0.2); S.menu.focus = 1; room.act('next'); look(ROOM, 0); await run(1.6); look(ROOM, -20); await run(1.2); look(DOWN, 0); await run(1.2); },
     // a few frames with the hands up, to check how they are drawn
     async hands() { look(-14, 0); hand.right.liftTo = 1; hand.left.liftTo = 1; await run(0.8); hand.right.pinchTo = 1; await run(0.5); },
-    // the first seconds of the film: already seated, a line on the monitor, the head comes up, the room answers
-    async open() {
-      room.data.seen.try4 = 1; room.act('next'); cur.pitch = DOWN; look(DOWN, 0); for (let k = 0; k < 6; k++) { t += 1 / FPS; room.step(t); } S.menu.focus = 1; room.act('next'); frame = 0; hand.right.liftTo = 0.35;
-      await run(1.5); mark('up'); look(ROOM, 0); await run(4.4); await pinch('right'); await run(0.3);
-      mark('left'); await say(3.4, -16, 1.1); mark('right'); await say(5.0, 16, 1.2);
-      mark('down'); look(DOWN, 0); await run(1.5); look(ROOM, 0); await run(4.4); await pinch('right'); await run(0.7);
-    },
     // sitting down: centre, first hint, two lines of the try-out
     async begin() {
       look(-8, 0); await run(1.2); look(ROOM, 0); await run(1.3); mark('centre'); await pinch('right'); await run(0.6);

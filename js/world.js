@@ -264,7 +264,7 @@ export async function buildWorld({ panel = false, textScale = 1, mr = false } = 
         // ease in perception: the multiplier is linear light, so square the ramp position
         const g = p.cur;
         // my room: people are solid whenever the head is up (no ghosts); the ones you face are brighter; they fade away only when you look down
-        if (mr) { const b = g <= LIGHT.dim ? 0.4 : 0.4 + 0.6 * (g - LIGHT.dim) / (LIGHT.lit - LIGHT.dim); p.mat.color.setRGB(b, b * 0.98, b * 0.94); p.mat.opacity = Math.max(0, Math.min(1, (g - LIGHT.out) / (LIGHT.dim - LIGHT.out))); p.mesh.visible = p.mat.opacity > 0.01; if (p.shadow) { p.shadow.material.opacity = p.mat.opacity; p.shadow.visible = p.mesh.visible; } }
+        if (mr) { const b = g <= LIGHT.dim ? 0.36 : 0.36 + 0.64 * Math.pow((g - LIGHT.dim) / (LIGHT.lit - LIGHT.dim), 1.5); /* the one you face stands out clearly from the rest */ p.mat.color.setRGB(b, b * 0.98, b * 0.94); p.mat.opacity = Math.max(0, Math.min(1, (g - LIGHT.out) / (LIGHT.dim - LIGHT.out))); p.mesh.visible = p.mat.opacity > 0.01; if (p.shadow) { p.shadow.material.opacity = p.mat.opacity; p.shadow.visible = p.mesh.visible; } }
         else p.mat.color.setRGB(g, g * 0.98, g * 0.94);
         // signs of life that a flat sprite can carry: slow breathing, sitting a little taller when lit, a small dip of the head
         const lit = Math.max(0, Math.min(1, (g - LIGHT.dim) / (LIGHT.lit - LIGHT.dim)));
